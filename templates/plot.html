@@ -1,0 +1,14 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>pepMAP</title>
+</head>
+<body>
+    <h1>pepMAP</h1>
+    <div>{{ plot_peptides_html | safe }}</div>
+    <div>{{ plot_features_html | safe }}</div>
+    <br>
+    <a href="{{ url_for('index') }}">Go back to upload page</a>
+</body>
+</html>
