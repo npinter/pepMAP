@@ -3,6 +3,7 @@ import pandas as pd
 import plotly.io as pio
 import plotly.graph_objs as go
 import requests
+from collections import OrderedDict
 
 app = Flask(__name__)
 
@@ -51,15 +52,45 @@ def fetch_protein_features(uniprot_id):
                 for feature in entry['features']:
                     if feature['type'] == 'DOMAIN':
                         features.append({
+                            'group': 'Domains',
                             'type': feature['type'],
-                            'description': feature.get('description', ''),
+                            'description': feature['description'],
+                            'start': int(feature['begin']),
+                            'end': int(feature['end']),
+                        })
+                    elif feature['type'] == 'BINDING':
+                        features.append({
+                            'group': 'Binding Sites',
+                            'type': feature['type'],
+                            'description': feature['description'],
+                            'molecule': feature['molecule'],
+                            'ligand': feature['ligand']['name'] if 'ligand' in feature else None,
+                            'start': int(feature['begin']),
+                            'end': int(feature['end']),
+                        })
+                    elif feature['type'] == 'SITE':
+                        features.append({
+                            'group': 'Sites',
+                            'type': feature['type'],
+                            'description': feature['description'],
                             'start': int(feature['begin']),
                             'end': int(feature['end']),
                         })
                     elif feature['type'] == 'MOD_RES':
                         features.append({
+                            'group': 'Modified Residues',
                             'type': feature['type'],
-                            'description': feature.get('description', ''),
+                            'description': feature['description'],
+                            'start': int(feature['begin']),
+                            'end': int(feature['end']),
+                        })
+                    elif feature['type'] == 'VARIANT':
+                        features.append({
+                            'group': 'Variants',
+                            'type': feature['type'],
+                            'ftID': feature['ftId'],
+                            'description': feature['description'],
+                            'alternativeSequence': feature['alternativeSequence'],
                             'start': int(feature['begin']),
                             'end': int(feature['end']),
                         })
@@ -95,7 +126,7 @@ def parse_report_tsv(tsv_stream):
     report_df = pd.read_csv(tsv_stream, delimiter='\t')
 
     report_df = report_df[['Run', 'Protein.Ids', 'Precursor.Normalised', 'Stripped.Sequence',
-                           'Precursor.Charge', 'Mass.Evidence']]
+                           'Precursor.Charge', 'Q.Value']]
 
     return report_df
 
@@ -166,7 +197,7 @@ def plot_peptides(peptide_positions_df, fasta_df, selected_protein_id):
                           f'<br>Location: {row["Start"]}-{row["End"]}'
                           f'<br>Intensity: {row["Precursor.Normalised"]:.2f}'
                           f'<br>Charge: {row["Precursor.Charge"]}'
-                          f'<br>Mass Evidence: {row["Mass.Evidence"]:.2f}',
+                          f'<br>Q Value: {row["Q.Value"]:.7f}',
                 showlegend=False
             )
             traces.append(trace)
@@ -253,7 +284,8 @@ def plot_features(fasta_df, selected_protein_id):
     protein_features = fetch_protein_features(selected_protein_id)
     protein_sequence = fasta_df.loc[fasta_df['uniprot_id'] == selected_protein_id, 'sequence'].iloc[0]
     protein_length = len(protein_sequence)
-    feature_types_count = {feature['type'] for feature in protein_features}
+
+    feature_groups = OrderedDict()
 
     feature_bar_height = 0.5
     feature_bar_line_width = 1
@@ -261,12 +293,22 @@ def plot_features(fasta_df, selected_protein_id):
     global_features_height = 50
 
     feature_traces = []
+
     for feature in protein_features:
+        feature_length = feature['end'] - feature['start']
+
+        if feature_length == 0:
+            feature_length = 1
+
+        group = feature['group']
+        if group not in feature_groups:
+            feature_groups[group] = len(feature_groups)
+
         if feature['type'] == 'DOMAIN':
             # create a bar for each domain feature
             feature_trace = go.Bar(
-                x=[feature['end'] - feature['start']],
-                y=[0],
+                x=[feature_length],
+                y=[feature_groups[group]],
                 base=feature['start'],
                 orientation='h',
                 width=feature_bar_height,
@@ -275,13 +317,30 @@ def plot_features(fasta_df, selected_protein_id):
                     line=dict(color='blue', width=feature_bar_line_width)
                 ),
                 hoverinfo='text',
-                hovertext=f"{feature['description']} ({feature['start']} - {feature['end']})"
+                hovertext=f"{feature['description']} ({feature['start']} - {feature['end']})",
+                hoverlabel=dict(align='left')
+            )
+        elif feature['type'] == 'BINDING':
+            # create a bar for each binding site
+            feature_trace = go.Bar(
+                x=[feature_length],
+                y=[feature_groups[group]],
+                base=feature['start'],
+                orientation='h',
+                width=feature_bar_height,
+                marker=dict(
+                    color='lightgreen',
+                    line=dict(color='green', width=feature_bar_line_width)
+                ),
+                hoverinfo='text',
+                hovertext=f"{feature['description']} ({feature['start']} - {feature['end']})",
+                hoverlabel=dict(align='left')
             )
         elif feature['type'] == 'MOD_RES':
             # create a bar for each modified residue
             feature_trace = go.Bar(
-                x=[feature['end'] - feature['start']],
-                y=[1],
+                x=[feature_length],
+                y=[feature_groups[group]],
                 base=feature['start'],
                 orientation='h',
                 width=feature_bar_height,
@@ -290,8 +349,42 @@ def plot_features(fasta_df, selected_protein_id):
                     line=dict(color='red', width=feature_bar_line_width)
                 ),
                 hoverinfo='text',
-                hovertext=f"{feature['description']} ({feature['start']} - {feature['end']})"
+                hovertext=f"{feature['description']} ({feature['start']} - {feature['end']})",
+                hoverlabel=dict(align='left')
             )
+        elif feature['type'] == 'SITE':
+            # create a bar for each site feature
+            feature_trace = go.Bar(
+                x=[feature_length],
+                y=[feature_groups[group]],
+                base=feature['start'],
+                orientation='h',
+                width=feature_bar_height,
+                marker=dict(
+                    color='lightcoral',
+                    line=dict(color='red', width=feature_bar_line_width)
+                ),
+                hoverinfo='text',
+                hovertext=f"{feature['description']} ({feature['start']} - {feature['end']})",
+                hoverlabel=dict(align='left')
+            )
+        elif feature['type'] == 'VARIANT':
+            # create a bar for each variant feature
+            feature_trace = go.Bar(
+                x=[feature_length],
+                y=[feature_groups[group]],
+                base=feature['start'],
+                orientation='h',
+                width=feature_bar_height,
+                marker=dict(
+                    color='lightgray',
+                    line=dict(color='gray', width=feature_bar_line_width)
+                ),
+                hoverinfo='text',
+                hovertext=f"{feature['description']} ({feature['start']} - {feature['end']})",
+                hoverlabel=dict(align='left')
+            )
+        feature_last_type = feature['type']
         feature_traces.append(feature_trace)
 
     layout = go.Layout(
@@ -303,8 +396,8 @@ def plot_features(fasta_df, selected_protein_id):
         ),
         yaxis=dict(
             tickmode='array',
-            tickvals=[0, 1],
-            ticktext=['Domains', 'Modified Residues'],
+            tickvals=list(feature_groups.values()),
+            ticktext=list(feature_groups.keys()),
             tickfont=dict(size=feature_label_size),
             fixedrange=True
         ),
@@ -312,7 +405,7 @@ def plot_features(fasta_df, selected_protein_id):
         showlegend=False,
         plot_bgcolor='white',
         margin=dict(l=250, r=20, t=0, b=0),
-        height=global_features_height
+        height=global_features_height * len(feature_groups)
     )
 
     config = {
@@ -360,7 +453,7 @@ def find_peptide_positions(report_df, fasta_df, selected_protein_id):
                 'End': start_position + len(peptide_sequence) - 1,
                 'Precursor.Normalised': row['Precursor.Normalised'],
                 'Precursor.Charge': row['Precursor.Charge'],
-                'Mass.Evidence': row['Mass.Evidence']
+                'Q.Value': row['Q.Value']
             })
 
     peptide_positions_df = pd.DataFrame(peptide_data)
@@ -402,4 +495,5 @@ def plot():
 
 
 if __name__ == '__main__':
-    app.run(debug=True)
+    # change port
+    app.run(port=7007, debug=True)
