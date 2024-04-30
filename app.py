@@ -194,7 +194,7 @@ def plot_peptides(peptide_positions_df, fasta_df, selected_protein_id):
                 ),
                 hoverinfo='text',
                 hovertext=f'<b>{row["Peptide"]}</b>'
-                          f'<br>Location: {row["Start"]}-{row["End"]}'
+                          f'<br>Position: {row["Start"]}-{row["End"]}'
                           f'<br>Intensity: {row["Precursor.Normalised"]:.2f}'
                           f'<br>Charge: {row["Precursor.Charge"]}'
                           f'<br>Q Value: {row["Q.Value"]:.7f}',
@@ -296,9 +296,12 @@ def plot_features(fasta_df, selected_protein_id):
 
     for feature in protein_features:
         feature_length = feature['end'] - feature['start']
+        feature_length_offset = 0
+        feature_position = f"{feature['start']} - {feature['end']}"
 
         if feature_length == 0:
-            feature_length = 1
+            feature_length_offset = 1
+            feature_position = f"{feature['start']}"
 
         group = feature['group']
         if group not in feature_groups:
@@ -307,7 +310,7 @@ def plot_features(fasta_df, selected_protein_id):
         if feature['type'] == 'DOMAIN':
             # create a bar for each domain feature
             feature_trace = go.Bar(
-                x=[feature_length],
+                x=[feature_length + feature_length_offset],
                 y=[feature_groups[group]],
                 base=feature['start'],
                 orientation='h',
@@ -317,13 +320,14 @@ def plot_features(fasta_df, selected_protein_id):
                     line=dict(color='blue', width=feature_bar_line_width)
                 ),
                 hoverinfo='text',
-                hovertext=f"{feature['description']} ({feature['start']} - {feature['end']})",
+                hovertext=f"{feature['description']}"
+                          f"<br>Position: {feature_position}",
                 hoverlabel=dict(align='left')
             )
         elif feature['type'] == 'BINDING':
             # create a bar for each binding site
             feature_trace = go.Bar(
-                x=[feature_length],
+                x=[feature_length + feature_length_offset],
                 y=[feature_groups[group]],
                 base=feature['start'],
                 orientation='h',
@@ -333,13 +337,16 @@ def plot_features(fasta_df, selected_protein_id):
                     line=dict(color='green', width=feature_bar_line_width)
                 ),
                 hoverinfo='text',
-                hovertext=f"{feature['description']} ({feature['start']} - {feature['end']})",
+                hovertext=f"{feature['description']}"
+                          f"<br>Position: {feature_position}"
+                          f"<br>Molecule: {feature['molecule']}"
+                          f"<br>Ligand: {feature['ligand']}",
                 hoverlabel=dict(align='left')
             )
         elif feature['type'] == 'MOD_RES':
             # create a bar for each modified residue
             feature_trace = go.Bar(
-                x=[feature_length],
+                x=[feature_length + feature_length_offset],
                 y=[feature_groups[group]],
                 base=feature['start'],
                 orientation='h',
@@ -349,13 +356,14 @@ def plot_features(fasta_df, selected_protein_id):
                     line=dict(color='red', width=feature_bar_line_width)
                 ),
                 hoverinfo='text',
-                hovertext=f"{feature['description']} ({feature['start']} - {feature['end']})",
+                hovertext=f"{feature['description']}"
+                          f"<br>Position: {feature_position}",
                 hoverlabel=dict(align='left')
             )
         elif feature['type'] == 'SITE':
             # create a bar for each site feature
             feature_trace = go.Bar(
-                x=[feature_length],
+                x=[feature_length + feature_length_offset],
                 y=[feature_groups[group]],
                 base=feature['start'],
                 orientation='h',
@@ -365,13 +373,14 @@ def plot_features(fasta_df, selected_protein_id):
                     line=dict(color='red', width=feature_bar_line_width)
                 ),
                 hoverinfo='text',
-                hovertext=f"{feature['description']} ({feature['start']} - {feature['end']})",
+                hovertext=f"{feature['description']}"
+                          f"<br>Position: {feature_position}",
                 hoverlabel=dict(align='left')
             )
         elif feature['type'] == 'VARIANT':
             # create a bar for each variant feature
             feature_trace = go.Bar(
-                x=[feature_length],
+                x=[feature_length + feature_length_offset],
                 y=[feature_groups[group]],
                 base=feature['start'],
                 orientation='h',
@@ -381,10 +390,12 @@ def plot_features(fasta_df, selected_protein_id):
                     line=dict(color='gray', width=feature_bar_line_width)
                 ),
                 hoverinfo='text',
-                hovertext=f"{feature['description']} ({feature['start']} - {feature['end']})",
+                hovertext=f"{feature['description']}"
+                          f"<br>Position: {feature_position}"
+                          f"<br>Alternative Sequence: {feature['alternativeSequence']}"
+                          f"<br>Feature ID: {feature['ftID']}",
                 hoverlabel=dict(align='left')
             )
-        feature_last_type = feature['type']
         feature_traces.append(feature_trace)
 
     layout = go.Layout(
