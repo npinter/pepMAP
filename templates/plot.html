@@ -1,14 +1,157 @@
-<!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <title>pepMAP</title>
+    <title>Plot Data</title>
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>
+    <style>
+        body {
+            text-align: center;
+            font-family: Arial, sans-serif;
+        }
+
+        .loader {
+            border: 4px solid #f3f3f3;
+            border-radius: 50%;
+            border-top: 4px solid #414141;
+            width: 25px;
+            height: 25px;
+            animation: spin 2s linear infinite;
+            margin: auto;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        #peptides_plot, #features_plot {
+            display: none;
+            margin-top: 20px;
+        }
+
+        .form-container {
+            display: inline-block;
+            margin-top: 20px;
+            padding: 20px;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+            background-color: #f9f9f9;
+            text-align: left;
+            width: 500px;
+        }
+
+        .form-group {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+
+        .form-group label {
+            margin-right: 10px;
+            flex: 0 0 40%;
+            text-align: right;
+        }
+
+        .form-group input,
+        .form-group button {
+            flex: 1;
+        }
+
+        input[type="text"],
+        input[type="file"],
+        button {
+            width: 100%;
+        }
+
+        .error-message {
+            color: red;
+            margin-top: 20px;
+        }
+    </style>
 </head>
 <body>
     <h1>pepMAP</h1>
-    <div>{{ plot_peptides_html | safe }}</div>
-    <div>{{ plot_features_html | safe }}</div>
-    <br>
-    <a href="{{ url_for('index') }}">Go back to upload page</a>
+    <div class="form-container">
+        <form>
+            <div class="form-group">
+                <label for="report_file">DIA-NN Report:</label>
+                <input type="file" id="report_file" name="report_file">
+            </div>
+            <div class="form-group">
+                <label for="fasta_file">FASTA Database:</label>
+                <input type="file" id="fasta_file" name="fasta_file">
+            </div>
+            <div class="form-group">
+                <label for="uniprot_id">UniProt ID:</label>
+                <input type="text" id="uniprot_id" name="uniprot_id">
+            </div>
+            <div class="form-group">
+                <button type="button" id="submit_button">Map Peptides</button>
+            </div>
+        </form>
+    </div>
+
+    <div id="peptides_plot"><div class="loader"></div></div>
+    <div id="features_plot"><div class="loader"></div></div>
+
+    <script>
+    function fetchPlots() {
+        $('#peptides_plot, #features_plot').show().html('<div class="loader"></div>');
+
+        var formData = new FormData();
+        formData.append('report_file', $('#report_file')[0].files[0]);
+        formData.append('fasta_file', $('#fasta_file')[0].files[0]);
+        formData.append('uniprot_id', $('#uniprot_id').val());
+
+        $.ajax({
+            url: '/plot_peptides',
+            type: 'POST',
+            data: formData,
+            contentType: false,
+            processData: false,
+            success: function(data) {
+                $('#peptides_plot').html(data);
+            },
+            error: function(xhr) {
+                let errorMsg = 'Failed to load peptides plot.';
+                if (xhr.responseJSON && xhr.responseJSON.error) {
+                    errorMsg += ' (' + xhr.responseJSON.error + ')';
+                } else {
+                    errorMsg += ' (Unknown Error)';
+                }
+                errorMsg = '<div class="error-message">' + errorMsg + '</div>';
+                $('#peptides_plot').html(errorMsg);
+            }
+        });
+
+        $.ajax({
+            url: '/plot_features',
+            type: 'POST',
+            data: formData,
+            contentType: false,
+            processData: false,
+            success: function(data) {
+                $('#features_plot').html(data);
+            },
+            error: function(xhr) {
+                let errorMsg = 'Failed to load features plot.';
+                if (xhr.responseJSON && xhr.responseJSON.error) {
+                    errorMsg += ' (' + xhr.responseJSON.error + ')';
+                } else {
+                    errorMsg += ' (Unknown Error)';
+                }
+                errorMsg = '<div class="error-message">' + errorMsg + '</div>';
+                $('#features_plot').html(errorMsg);
+            }
+        });
+    }
+
+    $(document).ready(function() {
+        $('#submit_button').click(function(e) {
+            e.preventDefault();
+            fetchPlots();
+        });
+    });
+    </script>
 </body>
 </html>

@@ -3,6 +3,7 @@ import pandas as pd
 import plotly.io as pio
 import plotly.graph_objs as go
 import requests
+from flask import jsonify
 from collections import OrderedDict
 
 app = Flask(__name__)
@@ -432,7 +433,7 @@ def plot_features(fasta_df, selected_protein_id):
 
 @app.route('/', methods=['GET'])
 def index():
-    return render_template('upload_form.html')
+    return render_template('plot.html')
 
 
 def find_peptide_positions(report_df, fasta_df, selected_protein_id):
@@ -471,40 +472,50 @@ def find_peptide_positions(report_df, fasta_df, selected_protein_id):
     return peptide_positions_df
 
 
-@app.route('/plot', methods=['POST'])
-def plot():
-    report_file = request.files['report_file']
-    fasta_file = request.files['fasta_file']
-    selected_protein_id = request.form['uniprot_id']
+@app.route('/plot_peptides', methods=['POST'])
+def plot_peptides_route():
+    report_file = request.files.get('report_file')
+    fasta_file = request.files.get('fasta_file')
+    selected_protein_id = request.form.get('uniprot_id')
 
-    # parse the FASTA file into a DataFrame
-    fasta_df = parse_fasta(fasta_file)
+    if not report_file or not fasta_file or not selected_protein_id:
+        return jsonify({'error': 'All fields must be provided.'}), 400
 
-    # parse the report.tsv file
-    report_df = parse_report_tsv(report_file.stream)
-
-    # find peptide positions
     try:
+        # parse the FASTA file into a DataFrame
+        fasta_df = parse_fasta(fasta_file.stream)
+
+        # parse the report.tsv file
+        report_df = parse_report_tsv(report_file.stream)
+
+        # find peptide positions
         peptide_positions_df = find_peptide_positions(report_df, fasta_df, selected_protein_id)
-    except ValueError as e:
-        print(e)
-        return str(e)
+        if peptide_positions_df.empty:
+            return jsonify({'error': 'No peptide positions found.'}), 400
 
-    if peptide_positions_df.empty:
-        print("No peptide positions found.")
-        return "No peptide positions found."
+        return plot_peptides(peptide_positions_df, fasta_df, selected_protein_id)
 
-    # generate the peptides plot
-    plot_peptides_html = plot_peptides(peptide_positions_df, fasta_df, selected_protein_id)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 400
 
-    # generate the features plot
-    plot_features_html = plot_features(fasta_df, selected_protein_id)
 
-    return render_template('plot.html',
-                           plot_peptides_html=plot_peptides_html,
-                           plot_features_html=plot_features_html)
+@app.route('/plot_features', methods=['POST'])
+def plot_features_route():
+    fasta_file = request.files.get('fasta_file')
+    selected_protein_id = request.form.get('uniprot_id')
+
+    if not fasta_file or not selected_protein_id:
+        return jsonify({'error': 'All fields must be provided.'}), 400
+
+    try:
+        # parse the FASTA file into a DataFrame
+        fasta_df = parse_fasta(fasta_file.stream)
+
+        return plot_features(fasta_df, selected_protein_id)
+
+    except Exception as e:
+        return jsonify({'error': str(e)}), 400
 
 
 if __name__ == '__main__':
-    # change port
     app.run(port=7007, debug=True)
