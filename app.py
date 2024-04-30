@@ -392,7 +392,7 @@ def plot_features(fasta_df, selected_protein_id):
                 hoverinfo='text',
                 hovertext=f"{feature['description']}"
                           f"<br>Position: {feature_position}"
-                          f"<br>Alternative Sequence: {feature['alternativeSequence']}"
+                          f"<br>SAAV: {protein_sequence[int(feature_position)-1]}->{feature['alternativeSequence']}"
                           f"<br>Feature ID: {feature['ftID']}",
                 hoverlabel=dict(align='left')
             )
