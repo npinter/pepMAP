@@ -1,13 +1,13 @@
+<!DOCTYPE html>
 <html lang="en">
 <head>
-    <title>Plot Data</title>
+    <title>pepMAP</title>
     <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>
     <style>
         body {
             text-align: center;
             font-family: Arial, sans-serif;
         }
-
         .loader {
             border: 4px solid #f3f3f3;
             border-radius: 50%;
@@ -17,17 +17,14 @@
             animation: spin 2s linear infinite;
             margin: auto;
         }
-
         @keyframes spin {
             0% { transform: rotate(0deg); }
             100% { transform: rotate(360deg); }
         }
-
         #peptides_plot, #features_plot {
             display: none;
-            margin-top: 20px;
+            margin-top: 10px;
         }
-
         .form-container {
             display: inline-block;
             margin-top: 20px;
@@ -36,36 +33,45 @@
             border-radius: 5px;
             background-color: #f9f9f9;
             text-align: left;
-            width: 500px;
+            width: 600px;
         }
-
+        .timer_container {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            margin-top: 10px;
+            margin-bottom: 10px;
+            font-size: 12px;
+        }
         .form-group {
             display: flex;
             justify-content: space-between;
             align-items: center;
             margin-bottom: 10px;
         }
-
         .form-group label {
             margin-right: 10px;
             flex: 0 0 40%;
             text-align: right;
         }
-
         .form-group input,
         .form-group button {
             flex: 1;
         }
-
         input[type="text"],
         input[type="file"],
         button {
             width: 100%;
         }
-
         .error-message {
             color: red;
             margin-top: 20px;
+        }
+        .hidden {
+            display: none;
+        }
+        .data-filenames {
+            font-size: 12px;
         }
     </style>
 </head>
@@ -76,17 +82,24 @@
             <div class="form-group">
                 <label for="report_file">DIA-NN Report:</label>
                 <input type="file" id="report_file" name="report_file">
+                <span id="report_filename" class="hidden data-filenames"></span>
             </div>
             <div class="form-group">
                 <label for="fasta_file">FASTA Database:</label>
                 <input type="file" id="fasta_file" name="fasta_file">
+                <span id="fasta_filename" class="hidden data-filenames"></span>
             </div>
             <div class="form-group">
-                <label for="uniprot_id">UniProt ID:</label>
-                <input type="text" id="uniprot_id" name="uniprot_id">
+                <button type="button" id="upload_button">Upload Files</button>
+                <button type="button" id="new_report_button" class="hidden">New Report</button>
             </div>
-            <div class="form-group">
+            <div class="form-group hidden" id="search_container">
+                <label for="search_input">Search:</label>
+                <input type="text" id="search_input" name="search_input" placeholder="UniProt ID or Gene Symbol">
                 <button type="button" id="submit_button">Map Peptides</button>
+            </div>
+            <div class="timer_container">
+                <div id="timer" class="timer hidden">Session will expire in 30:00 minutes</div>
             </div>
         </form>
     </div>
@@ -95,63 +108,157 @@
     <div id="features_plot"><div class="loader"></div></div>
 
     <script>
-    function fetchPlots() {
-        $('#peptides_plot, #features_plot').show().html('<div class="loader"></div>');
+        let sessionTime = 1800;
+        let timeoutInterval;
 
-        var formData = new FormData();
-        formData.append('report_file', $('#report_file')[0].files[0]);
-        formData.append('fasta_file', $('#fasta_file')[0].files[0]);
-        formData.append('uniprot_id', $('#uniprot_id').val());
+        function startTimer(duration, display) {
+            let timer = duration, minutes, seconds;
+            let interval = setInterval(function () {
+                minutes = parseInt(timer / 60, 10);
+                seconds = parseInt(timer % 60, 10);
 
-        $.ajax({
-            url: '/plot_peptides',
-            type: 'POST',
-            data: formData,
-            contentType: false,
-            processData: false,
-            success: function(data) {
-                $('#peptides_plot').html(data);
-            },
-            error: function(xhr) {
-                let errorMsg = 'Failed to load peptides plot.';
-                if (xhr.responseJSON && xhr.responseJSON.error) {
-                    errorMsg += ' (' + xhr.responseJSON.error + ')';
-                } else {
-                    errorMsg += ' (Unknown Error)';
+                minutes = minutes < 10 ? "0" + minutes : minutes;
+                seconds = seconds < 10 ? "0" + seconds : seconds;
+
+                display.textContent = 'Session will expire in ' + minutes + ":" + seconds + ' minutes';
+
+                if (--timer < 0) {
+                    clearInterval(interval);
+                    fetch('/flush', { method: 'POST' })
+                    .then(response => response.json())
+                    .then(data => {
+                        console.log('Session flushed:', data);
+                        location.reload();
+                    })
+                    .catch(error => console.error('Error flushing session:', error));
                 }
-                errorMsg = '<div class="error-message">' + errorMsg + '</div>';
-                $('#peptides_plot').html(errorMsg);
+            }, 1000);
+            return interval;
+        }
+
+        function resetTimer() {
+            clearTimeout(timeoutInterval);
+            let display = document.querySelector('#timer');
+            timeoutInterval = startTimer(sessionTime, display);
+        }
+
+        function stopTimer() {
+            clearTimeout(timeoutInterval);
+        }
+
+        window.onload = function () {
+            var display = document.querySelector('#timer');
+            if (!display.classList.contains('hidden')) {
+                startTimer(sessionTime, display);
+            }
+        };
+
+        document.getElementById('search_input').addEventListener('keypress', function(event) {
+            if (event.key === 'Enter') {
+                event.preventDefault();
+                document.getElementById('submit_button').click();
             }
         });
 
-        $.ajax({
-            url: '/plot_features',
-            type: 'POST',
-            data: formData,
-            contentType: false,
-            processData: false,
-            success: function(data) {
-                $('#features_plot').html(data);
-            },
-            error: function(xhr) {
-                let errorMsg = 'Failed to load features plot.';
-                if (xhr.responseJSON && xhr.responseJSON.error) {
-                    errorMsg += ' (' + xhr.responseJSON.error + ')';
-                } else {
-                    errorMsg += ' (Unknown Error)';
-                }
-                errorMsg = '<div class="error-message">' + errorMsg + '</div>';
-                $('#features_plot').html(errorMsg);
-            }
-        });
-    }
+        document.getElementById('upload_button').addEventListener('click', function() {
+            let formData = new FormData();
+            formData.append('report_file', document.getElementById('report_file').files[0]);
+            formData.append('fasta_file', document.getElementById('fasta_file').files[0]);
 
-    $(document).ready(function() {
-        $('#submit_button').click(function(e) {
-            e.preventDefault();
-            fetchPlots();
+            fetch('/upload', {
+                method: 'POST',
+                body: formData,
+            }).then(response => response.json())
+              .then(data => {
+                  document.getElementById('report_filename').textContent = document.getElementById('report_file').files[0].name;
+                  document.getElementById('fasta_filename').textContent = document.getElementById('fasta_file').files[0].name;
+                  document.getElementById('report_filename').classList.remove('hidden');
+                  document.getElementById('fasta_filename').classList.remove('hidden');
+                  document.getElementById('report_file').classList.add('hidden');
+                  document.getElementById('fasta_file').classList.add('hidden');
+                  document.getElementById('upload_button').classList.add('hidden');
+                  document.getElementById('search_container').classList.remove('hidden');
+                  document.getElementById('new_report_button').classList.remove('hidden');
+                  document.getElementById('timer').classList.remove('hidden');
+                  resetTimer();
+              })
+              .catch(error => console.error('Error:', error));
         });
-    });
+
+        document.getElementById('new_report_button').addEventListener('click', function() {
+            fetch('/flush', {
+                method: 'POST',
+            }).then(() => {
+                document.getElementById('report_file').classList.remove('hidden');
+                document.getElementById('fasta_file').classList.remove('hidden');
+                document.getElementById('upload_button').classList.remove('hidden');
+                document.getElementById('report_filename').classList.add('hidden');
+                document.getElementById('fasta_filename').classList.add('hidden');
+                document.getElementById('search_container').classList.add('hidden');
+                document.getElementById('new_report_button').classList.add('hidden');
+                document.getElementById('peptides_plot').style.display = 'none';
+                document.getElementById('features_plot').style.display = 'none';
+                document.getElementById('timer').classList.add('hidden');
+                stopTimer();
+            });
+        });
+
+        function fetchPlots() {
+            $('#peptides_plot, #features_plot').show().html('<div class="loader"></div>');
+
+            let formData = new FormData();
+            formData.append('search_input', $('#search_input').val());
+
+            $.ajax({
+                url: '/plot_peptides',
+                type: 'POST',
+                data: formData,
+                contentType: false,
+                processData: false,
+                success: function(data) {
+                    $('#peptides_plot').html(data);
+                },
+                error: function(xhr) {
+                    let errorMsg = 'Failed to load peptides plot.';
+                    if (xhr.responseJSON && xhr.responseJSON.error) {
+                        errorMsg += ' (' + xhr.responseJSON.error + ')';
+                    } else {
+                        errorMsg += ' (Unknown Error)';
+                    }
+                    errorMsg = '<div class="error-message">' + errorMsg + '</div>';
+                    $('#peptides_plot').html(errorMsg);
+                }
+            });
+
+            $.ajax({
+                url: '/plot_features',
+                type: 'POST',
+                data: formData,
+                contentType: false,
+                processData: false,
+                success: function(data) {
+                    $('#features_plot').html(data);
+                },
+                error: function(xhr) {
+                    let errorMsg = 'Failed to load features plot.';
+                    if (xhr.responseJSON && xhr.responseJSON.error) {
+                        errorMsg += ' (' + xhr.responseJSON.error + ')';
+                    } else {
+                        errorMsg += ' (Unknown Error)';
+                    }
+                    errorMsg = '<div class="error-message">' + errorMsg + '</div>';
+                    $('#features_plot').html(errorMsg);
+                }
+            });
+        }
+
+        $(document).ready(function() {
+            $('#submit_button').click(function(e) {
+                e.preventDefault();
+                fetchPlots();
+                resetTimer();
+            });
+        });
     </script>
 </body>
 </html>

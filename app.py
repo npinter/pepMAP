@@ -1,12 +1,25 @@
-from flask import Flask, render_template, request
+import os
+import shutil
 import pandas as pd
 import plotly.io as pio
 import plotly.graph_objs as go
 import requests
-from flask import jsonify
+from flask_caching import Cache
+from flask import Flask, render_template, request, jsonify, session
+from apscheduler.schedulers.background import BackgroundScheduler
 from collections import OrderedDict
+from flask_session import Session
+from datetime import timedelta
 
 app = Flask(__name__)
+app.config['CACHE_TYPE'] = 'SimpleCache'
+app.config['SECRET_KEY'] = os.urandom(24)
+app.config['SESSION_TYPE'] = 'filesystem'
+app.config['SESSION_PERMANENT'] = False
+app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(minutes=30)
+app.config['SESSION_FILE_DIR'] = 'flask_session'
+cache = Cache(app)
+Session(app)
 
 
 def generate_dynamic_ticks(protein_length):
@@ -113,7 +126,7 @@ def parse_fasta(fasta_stream):
             sequence = ''
             parts = line[1:].split('|')
             uniprot_id = parts[1]
-            gene_symbol = parts[2].split(' ')[0]
+            gene_symbol = parts[2].split(' ')[0].split("_HUMAN")[0]
         else:
             sequence += line
     if sequence:
@@ -239,8 +252,10 @@ def plot_peptides(peptide_positions_df, fasta_df, selected_protein_id):
 
     tickvals, ticktext = generate_dynamic_ticks(protein_length)
 
+    selected_protein_name = fasta_df.loc[fasta_df['uniprot_id'] == selected_protein_id, 'gene_symbol'].iloc[0]
+
     layout = go.Layout(
-        title=f'Peptide Mapping for {selected_protein_id}',
+        title=f'Peptide Mapping for {selected_protein_name} ({selected_protein_id})',
         xaxis=dict(
             range=[1, protein_length],
             tickmode='array',
@@ -265,7 +280,7 @@ def plot_peptides(peptide_positions_df, fasta_df, selected_protein_id):
         shapes=shapes,
         # calculate max peptide per row and multiply it with the total run count
         height=(global_max_sub_row_count * run_height) * len(unique_runs)
-        if global_max_sub_row_count > 1 else (run_height * 2) * len(unique_runs),
+        if global_max_sub_row_count > 1 else run_height + (run_height * 2 * len(unique_runs)),
     )
 
     fig = go.Figure(data=traces, layout=layout)
@@ -295,145 +310,143 @@ def plot_features(fasta_df, selected_protein_id):
 
     feature_traces = []
 
-    for feature in protein_features:
-        feature_length = feature['end'] - feature['start']
-        feature_length_offset = 0
-        feature_position = f"{feature['start']} - {feature['end']}"
+    if not protein_features:
+        return jsonify({'error': 'No features found for the selected protein.'}), 400
+    else:
+        for feature in protein_features:
+            feature_length = feature['end'] - feature['start']
+            feature_length_offset = 0
+            feature_position = f"{feature['start']} - {feature['end']}"
 
-        if feature_length == 0:
-            feature_length_offset = 1
-            feature_position = f"{feature['start']}"
+            if feature_length == 0:
+                feature_length_offset = 1
+                feature_position = f"{feature['start']}"
 
-        group = feature['group']
-        if group not in feature_groups:
-            feature_groups[group] = len(feature_groups)
+            group = feature['group']
+            if group not in feature_groups:
+                feature_groups[group] = len(feature_groups)
 
-        if feature['type'] == 'DOMAIN':
-            # create a bar for each domain feature
-            feature_trace = go.Bar(
-                x=[feature_length + feature_length_offset],
-                y=[feature_groups[group]],
-                base=feature['start'],
-                orientation='h',
-                width=feature_bar_height,
-                marker=dict(
-                    color='lightblue',
-                    line=dict(color='blue', width=feature_bar_line_width)
-                ),
-                hoverinfo='text',
-                hovertext=f"{feature['description']}"
-                          f"<br>Position: {feature_position}",
-                hoverlabel=dict(align='left')
-            )
-        elif feature['type'] == 'BINDING':
-            # create a bar for each binding site
-            feature_trace = go.Bar(
-                x=[feature_length + feature_length_offset],
-                y=[feature_groups[group]],
-                base=feature['start'],
-                orientation='h',
-                width=feature_bar_height,
-                marker=dict(
-                    color='lightgreen',
-                    line=dict(color='green', width=feature_bar_line_width)
-                ),
-                hoverinfo='text',
-                hovertext=f"{feature['description']}"
-                          f"<br>Position: {feature_position}"
-                          f"<br>Molecule: {feature['molecule']}"
-                          f"<br>Ligand: {feature['ligand']}",
-                hoverlabel=dict(align='left')
-            )
-        elif feature['type'] == 'MOD_RES':
-            # create a bar for each modified residue
-            feature_trace = go.Bar(
-                x=[feature_length + feature_length_offset],
-                y=[feature_groups[group]],
-                base=feature['start'],
-                orientation='h',
-                width=feature_bar_height,
-                marker=dict(
-                    color='darkred',
-                    line=dict(color='red', width=feature_bar_line_width)
-                ),
-                hoverinfo='text',
-                hovertext=f"{feature['description']}"
-                          f"<br>Position: {feature_position}",
-                hoverlabel=dict(align='left')
-            )
-        elif feature['type'] == 'SITE':
-            # create a bar for each site feature
-            feature_trace = go.Bar(
-                x=[feature_length + feature_length_offset],
-                y=[feature_groups[group]],
-                base=feature['start'],
-                orientation='h',
-                width=feature_bar_height,
-                marker=dict(
-                    color='lightcoral',
-                    line=dict(color='red', width=feature_bar_line_width)
-                ),
-                hoverinfo='text',
-                hovertext=f"{feature['description']}"
-                          f"<br>Position: {feature_position}",
-                hoverlabel=dict(align='left')
-            )
-        elif feature['type'] == 'VARIANT':
-            # create a bar for each variant feature
-            feature_trace = go.Bar(
-                x=[feature_length + feature_length_offset],
-                y=[feature_groups[group]],
-                base=feature['start'],
-                orientation='h',
-                width=feature_bar_height,
-                marker=dict(
-                    color='lightgray',
-                    line=dict(color='gray', width=feature_bar_line_width)
-                ),
-                hoverinfo='text',
-                hovertext=f"{feature['description']}"
-                          f"<br>Position: {feature_position}"
-                          f"<br>SAAV: {protein_sequence[int(feature_position)-1]}->{feature['alternativeSequence']}"
-                          f"<br>Feature ID: {feature['ftID']}",
-                hoverlabel=dict(align='left')
-            )
-        feature_traces.append(feature_trace)
+            if feature['type'] == 'DOMAIN':
+                # create a bar for each domain feature
+                feature_trace = go.Bar(
+                    x=[feature_length + feature_length_offset],
+                    y=[feature_groups[group]],
+                    base=feature['start'],
+                    orientation='h',
+                    width=feature_bar_height,
+                    marker=dict(
+                        color='lightblue',
+                        line=dict(color='blue', width=feature_bar_line_width)
+                    ),
+                    hoverinfo='text',
+                    hovertext=f"{feature['description']}"
+                              f"<br>Position: {feature_position}",
+                    hoverlabel=dict(align='left')
+                )
+            elif feature['type'] == 'BINDING':
+                # create a bar for each binding site
+                feature_trace = go.Bar(
+                    x=[feature_length + feature_length_offset],
+                    y=[feature_groups[group]],
+                    base=feature['start'],
+                    orientation='h',
+                    width=feature_bar_height,
+                    marker=dict(
+                        color='lightgreen',
+                        line=dict(color='green', width=feature_bar_line_width)
+                    ),
+                    hoverinfo='text',
+                    hovertext=f"{feature['description']}"
+                              f"<br>Position: {feature_position}"
+                              f"<br>Molecule: {feature['molecule']}"
+                              f"<br>Ligand: {feature['ligand']}",
+                    hoverlabel=dict(align='left')
+                )
+            elif feature['type'] == 'MOD_RES':
+                # create a bar for each modified residue
+                feature_trace = go.Bar(
+                    x=[feature_length + feature_length_offset],
+                    y=[feature_groups[group]],
+                    base=feature['start'],
+                    orientation='h',
+                    width=feature_bar_height,
+                    marker=dict(
+                        color='darkred',
+                        line=dict(color='red', width=feature_bar_line_width)
+                    ),
+                    hoverinfo='text',
+                    hovertext=f"{feature['description']}"
+                              f"<br>Position: {feature_position}",
+                    hoverlabel=dict(align='left')
+                )
+            elif feature['type'] == 'SITE':
+                # create a bar for each site feature
+                feature_trace = go.Bar(
+                    x=[feature_length + feature_length_offset],
+                    y=[feature_groups[group]],
+                    base=feature['start'],
+                    orientation='h',
+                    width=feature_bar_height,
+                    marker=dict(
+                        color='lightcoral',
+                        line=dict(color='red', width=feature_bar_line_width)
+                    ),
+                    hoverinfo='text',
+                    hovertext=f"{feature['description']}"
+                              f"<br>Position: {feature_position}",
+                    hoverlabel=dict(align='left')
+                )
+            elif feature['type'] == 'VARIANT':
+                # create a bar for each variant feature
+                feature_trace = go.Bar(
+                    x=[feature_length + feature_length_offset],
+                    y=[feature_groups[group]],
+                    base=feature['start'],
+                    orientation='h',
+                    width=feature_bar_height,
+                    marker=dict(
+                        color='lightgray',
+                        line=dict(color='gray', width=feature_bar_line_width)
+                    ),
+                    hoverinfo='text',
+                    hovertext=f"{feature['description']}"
+                              f"<br>Position: {feature_position}"
+                              f"<br>SAAV: {protein_sequence[int(feature_position)-1]}->{feature['alternativeSequence']}"
+                              f"<br>Feature ID: {feature['ftID']}",
+                    hoverlabel=dict(align='left')
+                )
+            feature_traces.append(feature_trace)
 
-    layout = go.Layout(
-        xaxis=dict(
-            range=[1, protein_length],
-            tickvals=[''],
-            ticktext=[''],
-            fixedrange=True
-        ),
-        yaxis=dict(
-            tickmode='array',
-            tickvals=list(feature_groups.values()),
-            ticktext=list(feature_groups.keys()),
-            tickfont=dict(size=feature_label_size),
-            fixedrange=True
-        ),
-        barmode='stack',
-        showlegend=False,
-        plot_bgcolor='white',
-        margin=dict(l=250, r=20, t=0, b=0),
-        height=global_features_height * len(feature_groups)
-    )
+        layout = go.Layout(
+            xaxis=dict(
+                range=[1, protein_length],
+                tickvals=[''],
+                ticktext=[''],
+                fixedrange=True
+            ),
+            yaxis=dict(
+                tickmode='array',
+                tickvals=list(feature_groups.values()),
+                ticktext=list(feature_groups.keys()),
+                tickfont=dict(size=feature_label_size),
+                fixedrange=True
+            ),
+            barmode='stack',
+            showlegend=False,
+            plot_bgcolor='white',
+            margin=dict(l=250, r=20, t=0, b=0),
+            height=global_features_height * len(feature_groups)
+        )
 
-    config = {
-        'displayModeBar': False,
-        'scrollZoom': False,
-        'staticPlot': False,
-        'doubleClick': 'reset'
-    }
+        config = {
+            'displayModeBar': False,
+            'scrollZoom': False,
+            'staticPlot': False,
+            'doubleClick': 'reset'
+        }
 
-    fig = go.Figure(data=feature_traces, layout=layout)
-    return pio.to_html(fig, full_html=False, config=config)
-
-
-@app.route('/', methods=['GET'])
-def index():
-    return render_template('plot.html')
+        fig = go.Figure(data=feature_traces, layout=layout)
+        return pio.to_html(fig, full_html=False, config=config)
 
 
 def find_peptide_positions(report_df, fasta_df, selected_protein_id):
@@ -472,22 +485,59 @@ def find_peptide_positions(report_df, fasta_df, selected_protein_id):
     return peptide_positions_df
 
 
+def clear_filesystem_sessions(session_dir):
+    for filename in os.listdir(session_dir):
+        file_path = os.path.join(session_dir, filename)
+        try:
+            if os.path.isfile(file_path) or os.path.islink(file_path):
+                os.unlink(file_path)
+            elif os.path.isdir(file_path):
+                shutil.rmtree(file_path)
+        except Exception as e:
+            print('Failed to delete %s. Reason: %s' % (file_path, e))
+
+
+def start_scheduler():
+    scheduler = BackgroundScheduler()
+    # trigger 'clear_filesystem_sessions' at 1 AM every day
+    scheduler.add_job(
+        clear_filesystem_sessions,
+        'cron',
+        hour=1,
+        args=[app.config['SESSION_FILE_DIR']]
+    )
+    scheduler.start()
+
+
+@app.before_request
+def make_session_permanent():
+    session.permanent = False
+
+
+@app.route('/', methods=['GET'])
+def index():
+    return render_template('plot.html')
+
+
 @app.route('/plot_peptides', methods=['POST'])
 def plot_peptides_route():
-    report_file = request.files.get('report_file')
-    fasta_file = request.files.get('fasta_file')
-    selected_protein_id = request.form.get('uniprot_id')
+    search_input = request.form.get('search_input')
 
-    if not report_file or not fasta_file or not selected_protein_id:
+    if 'fasta_data' in session and 'report_data' in session and search_input is not None:
+        fasta_df = pd.read_json(session['fasta_data'])
+        report_df = pd.read_json(session['report_data'])
+        selected_protein_id = fasta_df.loc[fasta_df['uniprot_id'] == search_input, 'uniprot_id']
+        if len(selected_protein_id) == 0:
+            selected_protein_id = fasta_df.loc[fasta_df['gene_symbol'] == search_input, 'uniprot_id']
+            if len(selected_protein_id) == 0:
+                return jsonify({'error': 'No protein found for the given search input.'}), 400
+
+        selected_protein_id = selected_protein_id.iloc[0]
+
+    else:
         return jsonify({'error': 'All fields must be provided.'}), 400
 
     try:
-        # parse the FASTA file into a DataFrame
-        fasta_df = parse_fasta(fasta_file.stream)
-
-        # parse the report.tsv file
-        report_df = parse_report_tsv(report_file.stream)
-
         # find peptide positions
         peptide_positions_df = find_peptide_positions(report_df, fasta_df, selected_protein_id)
         if peptide_positions_df.empty:
@@ -501,21 +551,48 @@ def plot_peptides_route():
 
 @app.route('/plot_features', methods=['POST'])
 def plot_features_route():
-    fasta_file = request.files.get('fasta_file')
-    selected_protein_id = request.form.get('uniprot_id')
+    search_input = request.form.get('search_input')
 
-    if not fasta_file or not selected_protein_id:
+    if 'fasta_data' in session and search_input is not None:
+        fasta_df = pd.read_json(session['fasta_data'])
+
+        selected_protein_id = fasta_df.loc[fasta_df['uniprot_id'] == search_input, 'uniprot_id']
+        if len(selected_protein_id) == 0:
+            selected_protein_id = fasta_df.loc[fasta_df['gene_symbol'] == search_input, 'uniprot_id']
+            if len(selected_protein_id) == 0:
+                return jsonify({'error': 'No protein found for the given search input.'}), 400
+
+        selected_protein_id = selected_protein_id.iloc[0]
+    else:
         return jsonify({'error': 'All fields must be provided.'}), 400
 
     try:
-        # parse the FASTA file into a DataFrame
-        fasta_df = parse_fasta(fasta_file.stream)
-
         return plot_features(fasta_df, selected_protein_id)
 
     except Exception as e:
         return jsonify({'error': str(e)}), 400
 
 
+@app.route('/upload', methods=['POST'])
+def upload_files():
+    report_file = request.files.get('report_file')
+    fasta_file = request.files.get('fasta_file')
+
+    if report_file and fasta_file:
+        session['fasta_data'] = parse_fasta(fasta_file.stream).to_json()
+        session['report_data'] = parse_report_tsv(report_file.stream).to_json()
+        return jsonify({'message': 'Files uploaded successfully'}), 200
+    else:
+        return jsonify({'error': 'Missing files'}), 400
+
+
+@app.route('/flush', methods=['POST'])
+def flush_session():
+    session.clear()
+    return jsonify({'message': 'Session cleared'}), 200
+
+
 if __name__ == '__main__':
+    clear_filesystem_sessions(app.config['SESSION_FILE_DIR'])
+    start_scheduler()
     app.run(port=7007, debug=True)
