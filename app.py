@@ -113,7 +113,7 @@ def fetch_protein_features(uniprot_id):
         return []
 
 
-def parse_fasta(fasta_stream):
+def parse_fasta(fasta_stream, organism):
     entries = []
     sequence = ''
     uniprot_id = ''
@@ -126,7 +126,7 @@ def parse_fasta(fasta_stream):
             sequence = ''
             parts = line[1:].split('|')
             uniprot_id = parts[1]
-            gene_symbol = parts[2].split(' ')[0].split("_HUMAN")[0]
+            gene_symbol = parts[2].split(' ')[0].split(f"_{organism}")[0]
         else:
             sequence += line
     if sequence:
@@ -577,9 +577,10 @@ def plot_features_route():
 def upload_files():
     report_file = request.files.get('report_file')
     fasta_file = request.files.get('fasta_file')
+    organism = request.form.get('organism')
 
     if report_file and fasta_file:
-        session['fasta_data'] = parse_fasta(fasta_file.stream).to_json()
+        session['fasta_data'] = parse_fasta(fasta_file.stream, organism).to_json()
         session['report_data'] = parse_report_tsv(report_file.stream).to_json()
         return jsonify({'message': 'Files uploaded successfully'}), 200
     else:

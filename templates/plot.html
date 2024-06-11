@@ -17,6 +17,10 @@
             animation: spin 2s linear infinite;
             margin: auto;
         }
+        .button-loader {
+            width: 8px;
+            height: 8px;
+        }
         @keyframes spin {
             0% { transform: rotate(0deg); }
             100% { transform: rotate(360deg); }
@@ -55,7 +59,12 @@
             text-align: right;
         }
         .form-group input,
-        .form-group button {
+        .form-group select {
+            text-align: left;
+            flex: 1;
+        }
+        .form-group button
+        {
             flex: 1;
         }
         input[type="text"],
@@ -88,6 +97,13 @@
                 <label for="fasta_file">FASTA Database:</label>
                 <input type="file" id="fasta_file" name="fasta_file">
                 <span id="fasta_filename" class="hidden data-filenames"></span>
+            </div>
+            <div class="form-group">
+                <label for="organism">Organism:</label>
+                <select id="organism" name="organism">
+                    <option value="HUMAN">Human</option>
+                    <option value="MOUSE">Mouse</option>
+                </select>
             </div>
             <div class="form-group">
                 <button type="button" id="upload_button">Upload Files</button>
@@ -162,8 +178,14 @@
 
         document.getElementById('upload_button').addEventListener('click', function() {
             let formData = new FormData();
+            let uploadButton = document.getElementById('upload_button');
+            let originalButtonHtml = uploadButton.innerHTML;
+            uploadButton.innerHTML = '<div class="loader button-loader"></div>';
+            uploadButton.disabled = true;
+
             formData.append('report_file', document.getElementById('report_file').files[0]);
             formData.append('fasta_file', document.getElementById('fasta_file').files[0]);
+            formData.append('organism', document.getElementById('organism').value);
 
             fetch('/upload', {
                 method: 'POST',
@@ -176,13 +198,20 @@
                   document.getElementById('fasta_filename').classList.remove('hidden');
                   document.getElementById('report_file').classList.add('hidden');
                   document.getElementById('fasta_file').classList.add('hidden');
-                  document.getElementById('upload_button').classList.add('hidden');
+                  document.getElementById('organism').disabled = true;
+                  uploadButton.classList.add('hidden');
                   document.getElementById('search_container').classList.remove('hidden');
                   document.getElementById('new_report_button').classList.remove('hidden');
                   document.getElementById('timer').classList.remove('hidden');
                   resetTimer();
               })
-              .catch(error => console.error('Error:', error));
+              .catch(error => {
+                  console.error('Error:', error);
+              })
+              .finally(() => {
+                  uploadButton.innerHTML = originalButtonHtml;
+                  uploadButton.disabled = false;
+              });
         });
 
         document.getElementById('new_report_button').addEventListener('click', function() {
@@ -191,6 +220,7 @@
             }).then(() => {
                 document.getElementById('report_file').classList.remove('hidden');
                 document.getElementById('fasta_file').classList.remove('hidden');
+                document.getElementById('organism').disabled = false;
                 document.getElementById('upload_button').classList.remove('hidden');
                 document.getElementById('report_filename').classList.add('hidden');
                 document.getElementById('fasta_filename').classList.add('hidden');
