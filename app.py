@@ -51,7 +51,7 @@ def generate_dynamic_ticks(protein_length):
     # add the last tick value
     if protein_length % chosen_step != 0:
         tickvals.append(protein_length)
-        ticktext.append(str(protein_length))
+        ticktext.append('')
 
     return tickvals, ticktext
 
