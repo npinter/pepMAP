@@ -4,6 +4,7 @@ import pandas as pd
 import plotly.io as pio
 import plotly.graph_objs as go
 import requests
+from io import StringIO
 from flask_caching import Cache
 from flask import Flask, render_template, request, jsonify, session
 from apscheduler.schedulers.background import BackgroundScheduler
@@ -538,8 +539,8 @@ def plot_peptides_route():
     proteotypic_only = request.form.get('proteotypic_checkbox') == 'true'
 
     if 'fasta_data' in session and 'report_data' in session and search_input is not None:
-        fasta_df = pd.read_json(session['fasta_data'])
-        report_df = pd.read_json(session['report_data'])
+        fasta_df = pd.read_json(StringIO(session['fasta_data']))
+        report_df = pd.read_json(StringIO(session['report_data']))
         selected_protein_id = fasta_df.loc[fasta_df['uniprot_id'] == search_input, 'uniprot_id']
         if len(selected_protein_id) == 0:
             selected_protein_id = fasta_df.loc[fasta_df['gene_symbol'] == search_input, 'uniprot_id']
@@ -568,7 +569,7 @@ def plot_features_route():
     search_input = request.form.get('search_input')
 
     if 'fasta_data' in session and search_input is not None:
-        fasta_df = pd.read_json(session['fasta_data'])
+        fasta_df = pd.read_json(StringIO(session['fasta_data']))
 
         selected_protein_id = fasta_df.loc[fasta_df['uniprot_id'] == search_input, 'uniprot_id']
         if len(selected_protein_id) == 0:
