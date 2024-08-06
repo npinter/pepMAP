@@ -407,7 +407,7 @@ def plot_features(fasta_df, selected_protein_id):
                     hoverlabel=dict(align='left')
                 )
             elif feature['type'] == 'VARIANT':
-                if feature['alternativeSequence'] is "":
+                if feature['alternativeSequence'] == "":
                     continue
                 # create a bar for each variant feature
                 consensus_aa = protein_sequence[feature['start']-1:feature['end']]
