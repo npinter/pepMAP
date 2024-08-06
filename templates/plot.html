@@ -82,6 +82,11 @@
         .data-filenames {
             font-size: 12px;
         }
+        #proteotypic_container input[type="checkbox"] {
+            flex: 0;
+            margin-left: 0;
+            margin-right: auto;
+        }
     </style>
 </head>
 <body>
@@ -104,6 +109,10 @@
                     <option value="HUMAN">Human</option>
                     <option value="MOUSE">Mouse</option>
                 </select>
+            </div>
+            <div class="form-group" id="proteotypic_container">
+                <label for="proteotypic_checkbox">Proteotypic:</label>
+                <input type="checkbox" id="proteotypic_checkbox" name="proteotypic_checkbox">
             </div>
             <div class="form-group">
                 <button type="button" id="upload_button">Upload Files</button>
@@ -238,6 +247,7 @@
 
             let formData = new FormData();
             formData.append('search_input', $('#search_input').val());
+            formData.append('proteotypic_checkbox', $('#proteotypic_checkbox').is(':checked'));
 
             $.ajax({
                 url: '/plot_peptides',

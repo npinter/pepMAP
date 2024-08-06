@@ -125,8 +125,16 @@ def parse_fasta(fasta_stream, organism):
                 entries.append({'uniprot_id': uniprot_id, 'gene_symbol': gene_symbol, 'sequence': sequence})
             sequence = ''
             parts = line[1:].split('|')
-            uniprot_id = parts[1]
-            gene_symbol = parts[2].split(' ')[0].split(f"_{organism}")[0]
+            try:
+                uniprot_id = parts[1]
+            except IndexError:
+                uniprot_id = parts
+                print(f"UniProt ID not found for {uniprot_id}. Using full header instead.")
+            try:
+                gene_symbol = parts[2].split(' ')[0].split(f"_{organism}")[0]
+            except IndexError:
+                gene_symbol = parts
+                print(f"Gene symbol not found for {gene_symbol}. Using full gene name instead.")
         else:
             sequence += line
     if sequence:
@@ -140,7 +148,7 @@ def parse_report_tsv(tsv_stream):
     report_df = pd.read_csv(tsv_stream, delimiter='\t')
 
     report_df = report_df[['Run', 'Protein.Ids', 'Precursor.Normalised', 'Stripped.Sequence',
-                           'Precursor.Charge', 'Q.Value']]
+                           'Precursor.Charge', 'Q.Value', 'Proteotypic']]
 
     return report_df
 
@@ -211,7 +219,8 @@ def plot_peptides(peptide_positions_df, fasta_df, selected_protein_id):
                           f'<br>Position: {row["Start"]}-{row["End"]}'
                           f'<br>Intensity: {row["Precursor.Normalised"]:.2f}'
                           f'<br>Charge: {row["Precursor.Charge"]}'
-                          f'<br>Q Value: {row["Q.Value"]:.7f}',
+                          f'<br>Q Value: {row["Q.Value"]:.7f}'
+                          f'<br>Proteotypic: {"Yes" if row["Proteotypic"] else "No"}',
                 showlegend=False
             )
             traces.append(trace)
@@ -449,14 +458,17 @@ def plot_features(fasta_df, selected_protein_id):
         return pio.to_html(fig, full_html=False, config=config)
 
 
-def find_peptide_positions(report_df, fasta_df, selected_protein_id):
+def find_peptide_positions(report_df, fasta_df, selected_protein_id, proteotypic_only):
     try:
         protein_sequence = fasta_df.loc[fasta_df['uniprot_id'] == selected_protein_id, 'sequence'].iloc[0]
     except IndexError:
         raise ValueError(f"No sequence found for Protein.Ids: {selected_protein_id}")
 
     # filter the report DataFrame for the selected protein
-    protein_report_df = report_df[report_df['Protein.Ids'] == selected_protein_id]
+    protein_report_df = report_df[report_df['Protein.Ids'].str.contains(selected_protein_id, na=False)]
+    if proteotypic_only:
+        protein_report_df = protein_report_df[protein_report_df['Proteotypic'] == True]
+
     if protein_report_df.empty:
         raise ValueError(f"No peptides found for Protein.Ids: {selected_protein_id}")
 
@@ -478,7 +490,8 @@ def find_peptide_positions(report_df, fasta_df, selected_protein_id):
                 'End': start_position + len(peptide_sequence) - 1,
                 'Precursor.Normalised': row['Precursor.Normalised'],
                 'Precursor.Charge': row['Precursor.Charge'],
-                'Q.Value': row['Q.Value']
+                'Q.Value': row['Q.Value'],
+                'Proteotypic': row['Proteotypic']
             })
 
     peptide_positions_df = pd.DataFrame(peptide_data)
@@ -522,6 +535,7 @@ def index():
 @app.route('/plot_peptides', methods=['POST'])
 def plot_peptides_route():
     search_input = request.form.get('search_input')
+    proteotypic_only = request.form.get('proteotypic_checkbox') == 'true'
 
     if 'fasta_data' in session and 'report_data' in session and search_input is not None:
         fasta_df = pd.read_json(session['fasta_data'])
@@ -539,7 +553,7 @@ def plot_peptides_route():
 
     try:
         # find peptide positions
-        peptide_positions_df = find_peptide_positions(report_df, fasta_df, selected_protein_id)
+        peptide_positions_df = find_peptide_positions(report_df, fasta_df, selected_protein_id, proteotypic_only)
         if peptide_positions_df.empty:
             return jsonify({'error': 'No peptide positions found.'}), 400
 
