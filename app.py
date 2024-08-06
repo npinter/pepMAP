@@ -407,7 +407,11 @@ def plot_features(fasta_df, selected_protein_id):
                     hoverlabel=dict(align='left')
                 )
             elif feature['type'] == 'VARIANT':
+                if feature['alternativeSequence'] is "":
+                    continue
                 # create a bar for each variant feature
+                consensus_aa = protein_sequence[feature['start']-1:feature['end']]
+
                 feature_trace = go.Bar(
                     x=[feature_length + feature_length_offset],
                     y=[feature_groups[group]],
@@ -421,7 +425,7 @@ def plot_features(fasta_df, selected_protein_id):
                     hoverinfo='text',
                     hovertext=f"{feature['description']}"
                               f"<br>Position: {feature_position}"
-                              f"<br>SAAV: {protein_sequence[int(feature_position)-1]}->{feature['alternativeSequence']}"
+                              f"<br>SAAV: {consensus_aa}->{feature['alternativeSequence']}"
                               f"<br>Feature ID: {feature['ftID']}",
                     hoverlabel=dict(align='left')
                 )
