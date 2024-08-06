@@ -468,7 +468,7 @@ def find_peptide_positions(report_df, fasta_df, selected_protein_id, proteotypic
     # filter the report DataFrame for the selected protein
     protein_report_df = report_df[report_df['Protein.Ids'].str.contains(selected_protein_id, na=False)]
     if proteotypic_only:
-        protein_report_df = protein_report_df[protein_report_df['Proteotypic'] == True]
+        protein_report_df = protein_report_df[protein_report_df['Proteotypic'] is True]
 
     if protein_report_df.empty:
         raise ValueError(f"No peptides found for Protein.Ids: {selected_protein_id}")
