@@ -491,8 +491,8 @@ def find_peptide_positions(report_df, fasta_df, selected_protein_id, proteotypic
             peptide_data.append({
                 'Run': row['Run'],
                 'Peptide': peptide_sequence,
-                'Start': start_position,
-                'End': start_position + len(peptide_sequence) - 1,
+                'Start': start_position + 1,
+                'End': start_position + len(peptide_sequence) - 1 + 1,
                 'Precursor.Normalised': row['Precursor.Normalised'],
                 'Precursor.Charge': row['Precursor.Charge'],
                 'Q.Value': row['Q.Value'],
