@@ -135,6 +135,7 @@
     <script>
         let sessionTime = 1800;
         let timeoutInterval;
+        let persistentHoverLayer = null;
 
         function startTimer(duration, display) {
             let timer = duration, minutes, seconds;
@@ -257,6 +258,10 @@
                 processData: false,
                 success: function(data) {
                     $('#peptides_plot').html(data);
+                    var peptidePlotDiv = document.getElementById('peptides_plot').getElementsByClassName('js-plotly-plot')[0];
+                    if (peptidePlotDiv) {
+                        setupPersistentHover(peptidePlotDiv);
+                    }
                 },
                 error: function(xhr) {
                     let errorMsg = 'Failed to load peptides plot.';
@@ -278,6 +283,10 @@
                 processData: false,
                 success: function(data) {
                     $('#features_plot').html(data);
+                    const featurePlotDiv = document.getElementById('features_plot').getElementsByClassName('js-plotly-plot')[0];
+                    if (featurePlotDiv) {
+                        setupPersistentHover(featurePlotDiv);
+                    }
                 },
                 error: function(xhr) {
                     let errorMsg = 'Failed to load features plot.';
@@ -291,6 +300,59 @@
                 }
             });
         }
+
+function setupPersistentHover(plotDiv) {
+    const mainSvgs = plotDiv.querySelectorAll('.main-svg');
+    if (mainSvgs.length === 0) {
+        console.error("No main SVG elements found in plot");
+        return;
+    }
+
+    const targetSvg = mainSvgs[1];
+    const layerAbove = targetSvg.querySelector('.layer-above');
+    if (!layerAbove) {
+        console.error("Layer-above element not found in plot");
+        return;
+    }
+
+    if (persistentHoverLayer) {
+        persistentHoverLayer.remove();
+    }
+
+    persistentHoverLayer = document.createElementNS("http://www.w3.org/2000/svg", "g");
+    persistentHoverLayer.classList.add("persistent-hoverlayer");
+
+    const shapelayer = layerAbove.querySelector('.shapelayer');
+    if (shapelayer) {
+        shapelayer.after(persistentHoverLayer);
+    } else {
+        layerAbove.appendChild(persistentHoverLayer);
+    }
+
+    plotDiv.on('plotly_click', function(data) {
+        const hoverLayer = plotDiv.getElementsByClassName("hoverlayer")[0];
+        if (hoverLayer) {
+            const hoverBox = hoverLayer.getElementsByClassName("hovertext")[0];
+            if (hoverBox) {
+                if (persistentHoverLayer.firstChild) {
+                    persistentHoverLayer.innerHTML = '';
+                    return;
+                }
+
+                const persistentHoverBox = hoverBox.cloneNode(true);
+
+                persistentHoverBox.style.pointerEvents = 'all';
+                persistentHoverBox.addEventListener('click', function(e) {
+                    e.stopPropagation();
+                    persistentHoverLayer.innerHTML = '';
+                });
+
+                persistentHoverLayer.appendChild(persistentHoverBox);
+                shapelayer.after(persistentHoverLayer);
+            }
+        }
+    });
+}
 
         $(document).ready(function() {
             $('#submit_button').click(function(e) {
