@@ -187,6 +187,7 @@ def plot_peptides(peptide_positions_df, fasta_df, selected_protein_id):
     run_label_size = 14
 
     global_max_sub_row_count = 0
+    max_sub_row_count_offset = 1
     traces = []
     temp_traces = []
     shapes = []
@@ -234,6 +235,7 @@ def plot_peptides(peptide_positions_df, fasta_df, selected_protein_id):
         sub_row_count_dict = {i: sub_row_count.count(i) for i in sub_row_count}
         # get the maximum count of identical start positions
         max_sub_row_count = max(sub_row_count_dict.values())
+        max_sub_row_count += max_sub_row_count_offset if max_sub_row_count > 1 else 0
 
         if max_sub_row_count > global_max_sub_row_count:
             global_max_sub_row_count = max_sub_row_count
@@ -256,7 +258,10 @@ def plot_peptides(peptide_positions_df, fasta_df, selected_protein_id):
 
         # increase the group offset for the next run
         if global_max_sub_row_count > 1:
-            run_offset += 2 * (peptide_bar_height + peptide_bar_margin)
+            # when last run then do nothing
+            if len(unique_runs) > 1:
+                if run != unique_runs[-2]:
+                    run_offset += (peptide_bar_height + peptide_bar_margin)
         else:
             run_offset = 0
 
