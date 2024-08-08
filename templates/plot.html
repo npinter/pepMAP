@@ -99,7 +99,7 @@
     <div class="form-container">
         <form>
             <div class="form-group">
-                <label for="report_file">DIA-NN Report:</label>
+                <label for="report_file">Report file:</label>
                 <input type="file" id="report_file" name="report_file">
                 <span id="report_filename" class="hidden data-filenames"></span>
             </div>
@@ -222,6 +222,7 @@
               })
               .catch(error => {
                   console.error('Error:', error);
+                  alert(error.message);
               })
               .finally(() => {
                   uploadButton.innerHTML = originalButtonHtml;

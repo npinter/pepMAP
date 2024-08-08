@@ -123,7 +123,10 @@ def parse_fasta(fasta_stream, organism):
     gene_symbol = ''
     for line in fasta_stream:
         line = line.decode('utf-8').strip()
-        if line.startswith('>'):
+        # remove entries for reverse and contaminant sequences of FragPipe FASTAs
+        if line.startswith('>rev_sp') or line.startswith('>contam_sp'):
+            continue
+        elif line.startswith('>'):
             if sequence:
                 entries.append({'uniprot_id': uniprot_id, 'gene_symbol': gene_symbol, 'sequence': sequence})
             sequence = ''
@@ -147,11 +150,58 @@ def parse_fasta(fasta_stream, organism):
     return fasta_df
 
 
-def parse_report_tsv(tsv_stream):
-    report_df = pd.read_csv(tsv_stream, delimiter='\t')
+def detect_file_type(tsv_stream):
+    header = tsv_stream.readline().decode('utf-8').strip().split('\t')
+    tsv_stream.seek(0)
 
-    report_df = report_df[['Run', 'Protein.Ids', 'Precursor.Normalised', 'Stripped.Sequence',
-                           'Precursor.Charge', 'Q.Value', 'Proteotypic']]
+    if 'Run' in header and 'Protein.Ids' in header and 'Precursor.Normalised' in header:
+        return 'diann'
+    elif 'Spectrum' in header and 'Peptide' in header and 'Protein ID' in header:
+        return 'fragpipe'
+    else:
+        raise ValueError("Unable to determine file type. Please ensure it's a valid DIA-NN or FragPipe report.")
+
+
+def parse_report_tsv(tsv_stream):
+    file_type = detect_file_type(tsv_stream)
+
+    if file_type == 'diann':
+        report_df = pd.read_csv(tsv_stream, delimiter='\t')
+        report_df = report_df[['Run', 'Protein.Ids', 'Precursor.Normalised', 'Stripped.Sequence',
+                               'Precursor.Charge', 'Q.Value', 'Proteotypic']]
+    elif file_type == 'fragpipe':
+        report_df = pd.read_csv(tsv_stream, delimiter='\t')
+        report_df = report_df.rename(columns={
+            'Spectrum': 'Run',
+            'Peptide': 'Stripped.Sequence',
+            'Charge': 'Precursor.Charge',
+            'Expectation': 'Q.Value',
+            'Intensity': 'Precursor.Normalised',
+            'Is Unique': 'Proteotypic',
+            'Protein ID': 'Protein.Ids'
+        })
+
+        # extract primary protein ID from 'Protein ID' column
+        report_df['Protein.Ids'] = report_df['Protein.Ids'].apply(lambda x: x.split('|')[1] if '|' in x else x)
+
+        # format 'Protein.Ids' column to match DIA-NN format
+        def extract_protein_ids(mapped_proteins):
+            return ';'.join([p.split('|')[1] for p in mapped_proteins.split(',') if '|' in p])
+
+        report_df['Protein.Ids'] = report_df.apply(
+            lambda row: f"{row['Protein.Ids']};{extract_protein_ids(row['Mapped Proteins'])}"
+            if pd.notna(row['Mapped Proteins']) else row['Protein.Ids'],
+            axis=1
+        )
+
+        report_df = report_df[['Run', 'Protein.Ids', 'Precursor.Normalised', 'Stripped.Sequence',
+                               'Precursor.Charge', 'Q.Value', 'Proteotypic']]
+
+    else:
+        raise ValueError("Invalid file type")
+
+    # drop rows with 0 in Precursor.Normalised
+    report_df = report_df[report_df['Precursor.Normalised'] != 0]
 
     return report_df
 
