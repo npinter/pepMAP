@@ -321,18 +321,16 @@
                 return;
             }
 
-            if (persistentHoverLayer) {
-                persistentHoverLayer.remove();
-            }
-
-            persistentHoverLayer = document.createElementNS("http://www.w3.org/2000/svg", "g");
-            persistentHoverLayer.classList.add("persistent-hoverlayer");
-
-            const shapelayer = layerAbove.querySelector('.shapelayer');
-            if (shapelayer) {
-                shapelayer.after(persistentHoverLayer);
-            } else {
-                layerAbove.appendChild(persistentHoverLayer);
+            let persistentHoverLayer = layerAbove.querySelector('.persistent-hoverlayer');
+            if (!persistentHoverLayer) {
+                persistentHoverLayer = document.createElementNS("http://www.w3.org/2000/svg", "g");
+                persistentHoverLayer.classList.add("persistent-hoverlayer");
+                const shapelayer = layerAbove.querySelector('.shapelayer');
+                if (shapelayer) {
+                    shapelayer.after(persistentHoverLayer);
+                } else {
+                    layerAbove.appendChild(persistentHoverLayer);
+                }
             }
 
             plotDiv.on('plotly_click', function(data) {
@@ -340,21 +338,27 @@
                 if (hoverLayer) {
                     const hoverBox = hoverLayer.getElementsByClassName("hovertext")[0];
                     if (hoverBox) {
-                        if (persistentHoverLayer.firstChild) {
-                            persistentHoverLayer.innerHTML = '';
-                            return;
+                        const existingHoverBox = Array.from(persistentHoverLayer.children).find(child =>
+                            child.textContent === hoverBox.textContent
+                        );
+
+                        if (existingHoverBox) {
+                            existingHoverBox.remove();
+                        } else {
+                            const persistentHoverBox = hoverBox.cloneNode(true);
+                            persistentHoverBox.style.pointerEvents = 'all';
+
+                            // generate a unique id for the hover box
+                            const hoverBoxId = 'hover-' + Date.now();
+                            persistentHoverBox.setAttribute('id', hoverBoxId);
+
+                            persistentHoverBox.addEventListener('click', function(e) {
+                                e.stopPropagation();
+                                this.remove();
+                            });
+
+                            persistentHoverLayer.appendChild(persistentHoverBox);
                         }
-
-                        const persistentHoverBox = hoverBox.cloneNode(true);
-
-                        persistentHoverBox.style.pointerEvents = 'all';
-                        persistentHoverBox.addEventListener('click', function(e) {
-                            e.stopPropagation();
-                            persistentHoverLayer.innerHTML = '';
-                        });
-
-                        persistentHoverLayer.appendChild(persistentHoverBox);
-                        shapelayer.after(persistentHoverLayer);
                     }
                 }
             });
