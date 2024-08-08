@@ -1,4 +1,6 @@
 import os
+import re
+import numpy as np
 import shutil
 import pandas as pd
 import plotly.io as pio
@@ -154,16 +156,15 @@ def parse_report_tsv(tsv_stream):
     return report_df
 
 
-def plot_peptides(peptide_positions_df, fasta_df, selected_protein_id):
+def plot_peptides(peptide_positions_df, fasta_df, selected_protein_id, global_log2_min, global_log2_max):
     # get the protein sequence for the selected protein ID
     protein_sequence = fasta_df.loc[fasta_df['uniprot_id'] == selected_protein_id, 'sequence'].iloc[0]
     protein_length = len(protein_sequence)
 
-    # normalize the values to use them for color mapping
-    pep_int_max = peptide_positions_df['Precursor.Normalised'].max()
-    peptide_positions_df['color_intensity'] = (
-            peptide_positions_df['Precursor.Normalised'] / pep_int_max
-    ) if pep_int_max else 0
+    # Calculate log2_intensity and normalized_intensity using global min/max
+    peptide_positions_df['log2_intensity'] = np.log2(peptide_positions_df['Precursor.Normalised'])
+    peptide_positions_df['normalized_intensity'] = (peptide_positions_df['log2_intensity'] - global_log2_min) / (
+                global_log2_max - global_log2_min)
 
     # create a sorted list of unique runs for the y-axis categories
     unique_runs = sorted(peptide_positions_df['Run'].unique())
@@ -180,7 +181,7 @@ def plot_peptides(peptide_positions_df, fasta_df, selected_protein_id):
 
     peptide_bar_height = 0.5
     peptide_bar_margin = 0.2
-    peptide_bar_line_width = 0.7
+    peptide_bar_line_width = 1
     run_gap = peptide_bar_height  # initial gap before the first run
     run_offset = 0  # initial offset for the first run
     run_height = 40
@@ -205,7 +206,7 @@ def plot_peptides(peptide_positions_df, fasta_df, selected_protein_id):
             last_end_positions[row['Run']] = row['End']
             max_offset_within_run = overlap_offset
 
-            color = f'rgba(255,{255 - row["color_intensity"] * 255},0,0.8)'
+            color = f'rgba(255,{255 - row["normalized_intensity"] * 255},0,0.8)'
             trace = go.Bar(
                 x=[row['End'] - row['Start']],
                 y=[row['y_pos'] + overlap_offset + run_offset],
@@ -219,7 +220,7 @@ def plot_peptides(peptide_positions_df, fasta_df, selected_protein_id):
                 hoverinfo='text',
                 hovertext=f'<b>{row["Peptide"]}</b>'
                           f'<br>Position: {row["Start"]}-{row["End"]}'
-                          f'<br>Intensity: {row["Precursor.Normalised"]:.2f}'
+                          f'<br>Log2 Intensity: {row["log2_intensity"]:.2f}'
                           f'<br>Charge: {row["Precursor.Charge"]}'
                           f'<br>Q Value: {row["Q.Value"]:.7f}'
                           f'<br>Proteotypic: {"Yes" if row["Proteotypic"] else "No"}',
@@ -269,6 +270,35 @@ def plot_peptides(peptide_positions_df, fasta_df, selected_protein_id):
 
     selected_protein_name = fasta_df.loc[fasta_df['uniprot_id'] == selected_protein_id, 'gene_symbol'].iloc[0]
 
+    # Create a colorscale
+    colorscale = [[0, 'rgba(255,255,0,0.8)'], [1, 'rgba(255,0,0,0.8)']]
+
+    # Add a trace for the colorbar
+    colorbar_trace = go.Scatter(
+        x=[None],
+        y=[None],
+        mode='markers',
+        marker=dict(
+            colorscale=colorscale,
+            showscale=True,
+            cmin=global_log2_min,
+            cmax=global_log2_max,
+            colorbar=dict(
+                title='log2-transformed intensity',
+                titleside='right',
+                thickness=20,
+                len=0.5,
+                yanchor='middle',
+                y=0.5,
+                xanchor='left',
+                x=1.02
+            )
+        ),
+        hoverinfo='none',
+        showlegend=False
+    )
+    traces.append(colorbar_trace)
+
     layout = go.Layout(
         title=f'Peptide Mapping for {selected_protein_name} ({selected_protein_id})',
         xaxis=dict(
@@ -291,7 +321,7 @@ def plot_peptides(peptide_positions_df, fasta_df, selected_protein_id):
         barmode='stack',
         showlegend=False,
         plot_bgcolor='white',
-        margin=dict(l=250, r=20, t=40, b=0),
+        margin=dict(l=250, r=100, t=40, b=0),
         shapes=shapes,
         # calculate max peptide per row and multiply it with the total run count
         height=(global_max_sub_row_count * run_height) * len(unique_runs)
@@ -453,7 +483,7 @@ def plot_features(fasta_df, selected_protein_id):
             barmode='stack',
             showlegend=False,
             plot_bgcolor='white',
-            margin=dict(l=250, r=20, t=0, b=0),
+            margin=dict(l=250, r=100, t=0, b=0),
             height=global_features_height * len(feature_groups)
         )
 
@@ -551,6 +581,12 @@ def plot_peptides_route():
         fasta_df = pd.read_json(StringIO(session['fasta_data']))
         report_df = pd.read_json(StringIO(session['report_data']))
         selected_protein_id = fasta_df.loc[fasta_df['uniprot_id'] == search_input, 'uniprot_id']
+
+        # calculate global log2 intensities
+        report_df['log2_intensity'] = np.log2(report_df['Precursor.Normalised'])
+        global_log2_min = report_df[np.isfinite(report_df['log2_intensity'])]['log2_intensity'].min()
+        global_log2_max = report_df['log2_intensity'].max()
+
         if len(selected_protein_id) == 0:
             selected_protein_id = fasta_df.loc[fasta_df['gene_symbol'] == search_input, 'uniprot_id']
             if len(selected_protein_id) == 0:
@@ -567,7 +603,7 @@ def plot_peptides_route():
         if peptide_positions_df.empty:
             return jsonify({'error': 'No peptide positions found.'}), 400
 
-        return plot_peptides(peptide_positions_df, fasta_df, selected_protein_id)
+        return plot_peptides(peptide_positions_df, fasta_df, selected_protein_id, global_log2_min, global_log2_max)
 
     except Exception as e:
         return jsonify({'error': str(e)}), 400
