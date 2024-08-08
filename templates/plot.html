@@ -263,7 +263,7 @@
                 processData: false,
                 success: function(data) {
                     $('#peptides_plot').html(data);
-                    applyCrispEdgesToColorbar();
+                    applyCrispEdges();
                     var peptidePlotDiv = document.getElementById('peptides_plot').getElementsByClassName('js-plotly-plot')[0];
                     if (peptidePlotDiv) {
                         setupPersistentHover(peptidePlotDiv);
@@ -364,12 +364,19 @@
             });
         }
 
-        function applyCrispEdgesToColorbar() {
+        function applyCrispEdges() {
             const colorbarGroups = document.querySelectorAll('g.colorbar');
             colorbarGroups.forEach(group => {
                 const rects = group.querySelectorAll('rect');
                 rects.forEach(rect => {
                     rect.setAttribute('shape-rendering', 'crispEdges');
+                });
+            });
+            const shapeGroups = document.querySelectorAll('g.shapelayer');
+            shapeGroups.forEach(group => {
+                const shapes = group.querySelectorAll('path');
+                shapes.forEach(shape => {
+                    shape.setAttribute('shape-rendering', 'crispEdges');
                 });
             });
         }
