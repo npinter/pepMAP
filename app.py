@@ -134,13 +134,13 @@ def parse_fasta(fasta_stream, organism):
             try:
                 uniprot_id = parts[1]
             except IndexError:
+                # Using full header instead.
                 uniprot_id = parts
-                print(f"UniProt ID not found for {uniprot_id}. Using full header instead.")
             try:
                 gene_symbol = parts[2].split(' ')[0].split(f"_{organism}")[0]
             except IndexError:
+                # Using full gene name instead.
                 gene_symbol = parts
-                print(f"Gene symbol not found for {gene_symbol}. Using full gene name instead.")
         else:
             sequence += line
     if sequence:
@@ -167,18 +167,44 @@ def parse_report_tsv(tsv_stream):
 
     if file_type == 'diann':
         report_df = pd.read_csv(tsv_stream, delimiter='\t')
+        report_df = report_df.rename(columns={'Q.Value': 'P.Value (Q.Value)'})
         report_df = report_df[['Run', 'Protein.Ids', 'Precursor.Normalised', 'Stripped.Sequence',
-                               'Precursor.Charge', 'Q.Value', 'Proteotypic']]
+                               'Precursor.Charge', 'P.Value (Q.Value)', 'Proteotypic']]
     elif file_type == 'fragpipe':
         report_df = pd.read_csv(tsv_stream, delimiter='\t')
         report_df = report_df.rename(columns={
             'Spectrum': 'Run',
             'Peptide': 'Stripped.Sequence',
             'Charge': 'Precursor.Charge',
-            'Expectation': 'Q.Value',
+            'Expectation': 'P.Value (Expectation)',
             'Intensity': 'Precursor.Normalised',
             'Is Unique': 'Proteotypic',
             'Protein ID': 'Protein.Ids'
+        })
+
+        # strip . from behind (3 times) and keep first (to get proper Sample names)
+        report_df['Run'] = report_df['Run'].str.rsplit('.', n=3).str[0]
+
+        # drop Purity < 0.5 (in line with TMT-Integrator)
+        report_df = report_df[report_df['Purity'] >= 0.5]
+
+        # sum up all intensities for the same peptide in the same Run with the same Charge
+        def aggregate_q_value(group):
+            min_val = group.min()
+            max_val = group.max()
+            count = len(group)
+
+            if count == 1:
+                return f"{min_val:.2E}"
+            else:
+                return f"{min_val:.2E} - {max_val:.2E} (count: {count})"
+
+        report_df = report_df.groupby(['Run', 'Stripped.Sequence', 'Precursor.Charge'], as_index=False).agg({
+            'Precursor.Normalised': 'sum',
+            'P.Value (Expectation)': aggregate_q_value,
+            'Proteotypic': 'first',
+            'Protein.Ids': 'first',
+            'Mapped Proteins': 'first'
         })
 
         # extract primary protein ID from 'Protein ID' column
@@ -195,7 +221,7 @@ def parse_report_tsv(tsv_stream):
         )
 
         report_df = report_df[['Run', 'Protein.Ids', 'Precursor.Normalised', 'Stripped.Sequence',
-                               'Precursor.Charge', 'Q.Value', 'Proteotypic']]
+                               'Precursor.Charge', 'P.Value (Expectation)', 'Proteotypic']]
 
     else:
         raise ValueError("Invalid file type")
@@ -206,7 +232,7 @@ def parse_report_tsv(tsv_stream):
     return report_df
 
 
-def plot_peptides(peptide_positions_df, fasta_df, selected_protein_id, global_log2_min, global_log2_max):
+def plot_peptides(peptide_positions_df, fasta_df, selected_protein_id, global_log2_min, global_log2_max, p_value_column, p_value_name):
     # get the protein sequence for the selected protein ID
     protein_sequence = fasta_df.loc[fasta_df['uniprot_id'] == selected_protein_id, 'sequence'].iloc[0]
     protein_length = len(protein_sequence)
@@ -272,7 +298,7 @@ def plot_peptides(peptide_positions_df, fasta_df, selected_protein_id, global_lo
                           f'<br>Position: {row["Start"]}-{row["End"]}'
                           f'<br>Log2 Intensity: {row["log2_intensity"]:.2f}'
                           f'<br>Charge: {row["Precursor.Charge"]}'
-                          f'<br>Q Value: {row["Q.Value"]:.7f}'
+                          f'<br>{p_value_name}: {row[p_value_column]}'
                           f'<br>Proteotypic: {"Yes" if row["Proteotypic"] else "No"}',
                 showlegend=False
             )
@@ -319,35 +345,6 @@ def plot_peptides(peptide_positions_df, fasta_df, selected_protein_id, global_lo
     tickvals, ticktext = generate_dynamic_ticks(protein_length)
 
     selected_protein_name = fasta_df.loc[fasta_df['uniprot_id'] == selected_protein_id, 'gene_symbol'].iloc[0]
-
-    # Create a colorscale
-    colorscale = [[0, 'rgba(255,255,0,0.8)'], [1, 'rgba(255,0,0,0.8)']]
-
-    # Add a trace for the colorbar
-    colorbar_trace = go.Scatter(
-        x=[None],
-        y=[None],
-        mode='markers',
-        marker=dict(
-            colorscale=colorscale,
-            showscale=True,
-            cmin=global_log2_min,
-            cmax=global_log2_max,
-            colorbar=dict(
-                title='log2-transformed intensity',
-                titleside='right',
-                thickness=20,
-                len=0.5,
-                yanchor='middle',
-                y=0.5,
-                xanchor='left',
-                x=1.02
-            )
-        ),
-        hoverinfo='none',
-        showlegend=False
-    )
-    traces.append(colorbar_trace)
 
     layout = go.Layout(
         title=f'Peptide Mapping for {selected_protein_name} ({selected_protein_id})',
@@ -548,7 +545,7 @@ def plot_features(fasta_df, selected_protein_id):
         return pio.to_html(fig, full_html=False, config=config)
 
 
-def find_peptide_positions(report_df, fasta_df, selected_protein_id, proteotypic_only):
+def find_peptide_positions(report_df, fasta_df, selected_protein_id, proteotypic_only, p_value_column):
     try:
         protein_sequence = fasta_df.loc[fasta_df['uniprot_id'] == selected_protein_id, 'sequence'].iloc[0]
     except IndexError:
@@ -580,7 +577,7 @@ def find_peptide_positions(report_df, fasta_df, selected_protein_id, proteotypic
                 'End': start_position + len(peptide_sequence) - 1 + 1,
                 'Precursor.Normalised': row['Precursor.Normalised'],
                 'Precursor.Charge': row['Precursor.Charge'],
-                'Q.Value': row['Q.Value'],
+                p_value_column: row[p_value_column],
                 'Proteotypic': row['Proteotypic']
             })
 
@@ -632,6 +629,13 @@ def plot_peptides_route():
         report_df = pd.read_json(StringIO(session['report_data']))
         selected_protein_id = fasta_df.loc[fasta_df['uniprot_id'] == search_input, 'uniprot_id']
 
+        # find the P.Value column
+        p_value_column = next((col for col in report_df.columns if re.match(r'^P\.Value', col)), None)
+
+        # extract the value in brackets for hover text
+        p_value_name = re.search(r'\((.*?)\)', p_value_column)
+        p_value_name = p_value_name.group(1) if p_value_name else p_value_column
+
         # calculate global log2 intensities
         report_df['log2_intensity'] = np.log2(report_df['Precursor.Normalised'])
         global_log2_min = report_df[np.isfinite(report_df['log2_intensity'])]['log2_intensity'].min()
@@ -649,11 +653,11 @@ def plot_peptides_route():
 
     try:
         # find peptide positions
-        peptide_positions_df = find_peptide_positions(report_df, fasta_df, selected_protein_id, proteotypic_only)
+        peptide_positions_df = find_peptide_positions(report_df, fasta_df, selected_protein_id, proteotypic_only, p_value_column)
         if peptide_positions_df.empty:
             return jsonify({'error': 'No peptide positions found.'}), 400
 
-        return plot_peptides(peptide_positions_df, fasta_df, selected_protein_id, global_log2_min, global_log2_max)
+        return plot_peptides(peptide_positions_df, fasta_df, selected_protein_id, global_log2_min, global_log2_max, p_value_column, p_value_name)
 
     except Exception as e:
         return jsonify({'error': str(e)}), 400
