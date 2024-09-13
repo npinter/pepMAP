@@ -46,10 +46,15 @@ conda install -c conda-forge numpy==1.26.4 pandas==2.2.2 plotly==5.21.0 requests
 
 ### 4. Run the Application
 
+Activate the Conda Environment
+
+```bash
+conda activate pepMAP
+```
 Start the Flask application:
 
 ```bash
-python app.py
+(pepMAP) python app.py
 ```
 
 By default, the application runs on `http://localhost:7007`. Open this URL in your web browser to access pepMAP.
