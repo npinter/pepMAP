@@ -2,7 +2,7 @@
 
 pepMAP is a web-based application for visualizing peptide mappings onto protein sequences. It supports input from both FragPipe and DIA-NN reports, providing an interactive interface to explore peptide coverage, modifications, and protein features.
 
-![pepMAP](https://github.com/user-attachments/assets/94a86415-cdc2-4f2d-b1f0-c960d25b2f9a)
+![pepMAP](https://github.com/user-attachments/assets/ddbb7964-f953-48a8-b094-c35d5491d49d)
 
 ## Features
 
