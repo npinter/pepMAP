@@ -699,4 +699,4 @@ def flush_session():
 if __name__ == '__main__':
     clear_filesystem_sessions(app.config['SESSION_FILE_DIR'])
     start_scheduler()
-    app.run(port=7007, debug=True)
+    app.run(port=7007, debug=False)
