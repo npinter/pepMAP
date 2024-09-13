@@ -233,59 +233,70 @@ def parse_report_tsv(tsv_stream):
 
 
 def plot_peptides(peptide_positions_df, fasta_df, selected_protein_id, global_log2_min, global_log2_max, p_value_column, p_value_name):
-    # get the protein sequence for the selected protein ID
+    # get the protein sequence and length
     protein_sequence = fasta_df.loc[fasta_df['uniprot_id'] == selected_protein_id, 'sequence'].iloc[0]
     protein_length = len(protein_sequence)
 
-    # Calculate log2_intensity and normalized_intensity using global min/max
+    # calculate normalized intensity
     peptide_positions_df['log2_intensity'] = np.log2(peptide_positions_df['Precursor.Normalised'])
-    peptide_positions_df['normalized_intensity'] = (peptide_positions_df['log2_intensity'] - global_log2_min) / (
-                global_log2_max - global_log2_min)
+    peptide_positions_df['normalized_intensity'] = (peptide_positions_df['log2_intensity'] - global_log2_min) / (global_log2_max - global_log2_min)
 
-    # create a sorted list of unique runs for the y-axis categories
+    # get unique runs
     unique_runs = sorted(peptide_positions_df['Run'].unique())
-    run_categories = {run: i for i, run in enumerate(unique_runs, start=1)}
 
-    # assign y positions for each peptide based on its run category
-    peptide_positions_df['y_pos'] = peptide_positions_df['Run'].map(run_categories)
-
-    # sort peptides within each run by their start position
-    peptide_positions_df.sort_values(['Run', 'Start'], ascending=[True, True], inplace=True)
-
-    # initialize an empty dictionary to keep track of the last end position for each run
-    last_end_positions = {run: 0 for run in unique_runs}
-
-    peptide_bar_height = 0.5
-    peptide_bar_margin = 0.2
+    peptide_bar_height = 20
+    peptide_bar_margin = 5
     peptide_bar_line_width = 1
-    run_gap = peptide_bar_height  # initial gap before the first run
-    run_offset = 0  # initial offset for the first run
-    run_height = 40
     run_label_size = 14
-
-    global_max_sub_row_count = 0
-    max_sub_row_count_offset = 1
     traces = []
-    temp_traces = []
     shapes = []
+    current_y = 0
+    y_tickvals = []
+    y_ticktext = []
 
-    for run, group in peptide_positions_df.groupby('Run'):
-        group = group.reset_index()
-        max_offset_within_run = 1
-        for i, (idx, row) in enumerate(group.iterrows()):
-            # determine if the current peptide overlaps with the previous one
-            overlap_offset = 0
-            if row['Start'] < last_end_positions[row['Run']]:
-                overlap_offset = max_offset_within_run + peptide_bar_height + peptide_bar_margin
+    min_run_height = peptide_bar_height + peptide_bar_margin
 
-            # update the last end position for the run
-            last_end_positions[row['Run']] = row['End']
-            max_offset_within_run = overlap_offset
+    for run in unique_runs:
+        group = peptide_positions_df[peptide_positions_df['Run'] == run].copy()
+        group.sort_values('Start', inplace=True)
 
+        end_positions_per_y_offset = []
+        y_offsets = []
+
+        # assign peptides to y-offsets to avoid overlaps
+        for idx, row in group.iterrows():
+            placed = False
+            for y_offset_idx, end_time in enumerate(end_positions_per_y_offset):
+                if row['Start'] >= end_time:
+                    # Place peptide at this y-offset
+                    end_positions_per_y_offset[y_offset_idx] = row['End']
+                    y_offsets.append(y_offset_idx)
+                    placed = True
+                    break
+            if not placed:
+                # create a new y-offset
+                end_positions_per_y_offset.append(row['End'])
+                y_offsets.append(len(end_positions_per_y_offset) - 1)
+
+        # calculate overlap offsets
+        group['overlap_offset'] = [offset * (peptide_bar_height + peptide_bar_margin) for offset in y_offsets]
+        max_y_offset = max(y_offsets) if y_offsets else 0
+
+        # define y_base for the current run
+        y_base = current_y
+        group['y_base'] = y_base
+
+        # add y-tick values and labels
+        # position the label at the center of the run's vertical space
+        run_height = max((max_y_offset + 1) * (peptide_bar_height + peptide_bar_margin), min_run_height)
+        y_tickvals.append(y_base + run_height / 2)
+        y_ticktext.append(run)
+
+        for idx, row in group.iterrows():
             color = f'rgba(255,{255 - row["normalized_intensity"] * 255},0,0.8)'
             trace = go.Bar(
                 x=[row['End'] - row['Start']],
-                y=[row['y_pos'] + overlap_offset + run_offset],
+                y=[row['y_base'] + row['overlap_offset']],
                 width=peptide_bar_height,
                 base=row['Start'],
                 orientation='h',
@@ -303,45 +314,24 @@ def plot_peptides(peptide_positions_df, fasta_df, selected_protein_id, global_lo
                 showlegend=False
             )
             traces.append(trace)
-            temp_traces.append(trace)
 
-        sub_row_count = [trace['base'] for trace in temp_traces]
-        # clear the temporary traces list
-        temp_traces = []
-        # count all identical start positions of list
-        sub_row_count_dict = {i: sub_row_count.count(i) for i in sub_row_count}
-        # get the maximum count of identical start positions
-        max_sub_row_count = max(sub_row_count_dict.values())
-        max_sub_row_count += max_sub_row_count_offset if max_sub_row_count > 1 else 0
-
-        if max_sub_row_count > global_max_sub_row_count:
-            global_max_sub_row_count = max_sub_row_count
-
-        # line after each sample
+        # add separator line after each run
         shapes.append({
             'type': 'line',
             'x0': 0,
-            'y0': run_gap,
+            'y0': y_base + run_height,
             'x1': protein_length,
-            'y1': run_gap,
+            'y1': y_base + run_height,
             'line': {
                 'color': 'black',
                 'width': 1,
             },
         })
 
-        # get the run gap position after the last peptide in the run
-        run_gap = max([trace['y'][0] for trace in traces]) + peptide_bar_height
+        # update current_y for the next run
+        current_y += run_height + peptide_bar_margin * 4 # Add extra space between runs
 
-        # increase the group offset for the next run
-        if global_max_sub_row_count > 1:
-            # when last run then do nothing
-            if len(unique_runs) > 1:
-                if run != unique_runs[-2]:
-                    run_offset += (peptide_bar_height + peptide_bar_margin)
-        else:
-            run_offset = 0
-
+    # generate dynamic ticks for the x-axis
     tickvals, ticktext = generate_dynamic_ticks(protein_length)
 
     selected_protein_name = fasta_df.loc[fasta_df['uniprot_id'] == selected_protein_id, 'gene_symbol'].iloc[0]
@@ -360,19 +350,18 @@ def plot_peptides(peptide_positions_df, fasta_df, selected_protein_id, global_lo
         ),
         yaxis=dict(
             tickmode='array',
-            tickvals=[shape["y0"] + peptide_bar_height for shape in shapes],
-            ticktext=unique_runs,
+            tickvals=y_tickvals,
+            ticktext=y_ticktext,
             tickfont=dict(size=run_label_size),
-            fixedrange=True
+            fixedrange=True,
+            autorange='reversed'
         ),
-        barmode='stack',
+        barmode='overlay',
         showlegend=False,
         plot_bgcolor='white',
         margin=dict(l=250, r=100, t=40, b=0),
         shapes=shapes,
-        # calculate max peptide per row and multiply it with the total run count
-        height=(global_max_sub_row_count * run_height) * len(unique_runs)
-        if global_max_sub_row_count > 1 else run_height + (run_height * 2 * len(unique_runs)),
+        height=current_y + 50
     )
 
     fig = go.Figure(data=traces, layout=layout)
