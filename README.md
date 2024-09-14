@@ -33,7 +33,6 @@ Create a new Conda environment named `pepMAP` with the required packages:
 
 ```bash
 conda create -n pepMAP -c conda-forge python=3.9 numpy==1.26.4 pandas==2.2.2 plotly==5.21.0 requests==2.31.0 flask==3.0.3 flask-caching==2.1.0 flask-session==0.8.0 apscheduler==3.10.4
-conda activate pepMAP
 ```
 
 ### 3. Run the Application
