@@ -137,7 +137,8 @@
             </div>
             <div class="form-group hidden" id="search_container">
                 <label for="search_input">Gene name:</label>
-                <input type="text" id="search_input" name="search_input" placeholder="Gene name">
+                <input type="text" id="search_input" name="search_input" placeholder="Gene name or UniProt ID" list="gene_suggestions">
+                <datalist id="gene_suggestions"></datalist>
                 <button type="button" id="submit_button">Map Peptides</button>
             </div>
             <div class="form-group hidden" id="stats_container">
@@ -502,6 +503,24 @@
                 e.preventDefault();
                 fetchPlots();
                 resetTimer();
+            });
+
+            $('#search_input').on('input', function() {
+                const query = $(this).val().trim();
+                if (!query) {
+                    $('#gene_suggestions').empty();
+                    return;
+                }
+
+                fetch('/autocomplete?query=' + encodeURIComponent(query))
+                    .then(response => response.json())
+                    .then(data => {
+                        const options = (data.suggestions || []).map(suggestion =>
+                            '<option value="' + suggestion + '"></option>'
+                        );
+                        $('#gene_suggestions').html(options.join(''));
+                    })
+                    .catch(error => console.error('Autocomplete error:', error));
             });
 
             $('#sample_name_cleanup').on('change', function() {
