@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
     <title>pepMAP</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
     <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>
     <style>
         body {
@@ -141,6 +142,14 @@
                 <input type="text" id="search_input" name="search_input" placeholder="Gene name or UniProt ID" list="gene_suggestions">
                 <datalist id="gene_suggestions"></datalist>
                 <button type="button" id="submit_button">Map Peptides</button>
+                <button type="button" id="edit_title_button" title="Edit title">
+                    <i class="fa-solid fa-pen"></i>
+                </button>
+            </div>
+            <div class="form-group hidden" id="custom_title_container">
+                <label for="custom_title_input">Plot title:</label>
+                <input type="text" id="custom_title_input" name="custom_title_input" placeholder="Custom gene name (display only)">
+                <button type="button" id="clear_title_button">Reset title</button>
             </div>
             <div class="form-group hidden" id="stats_container">
                 <button type="button" id="show_all_stats_button">Show all stats</button>
@@ -276,6 +285,7 @@
             formData.append('proteotypic_checkbox', $('#proteotypic_checkbox').is(':checked'));
             formData.append('sample_name_cleanup', $('#sample_name_cleanup').val());
             formData.append('sample_name_custom_pattern', $('#sample_name_custom_pattern').val());
+            formData.append('custom_title', $('#custom_title_input').val());
 
             $.ajax({
                 url: '/plot_peptides',
@@ -504,6 +514,19 @@
                 e.preventDefault();
                 fetchPlots();
                 resetTimer();
+            });
+
+            $('#edit_title_button').click(function(e) {
+                e.preventDefault();
+                $('#custom_title_container').toggleClass('hidden');
+                if (!$('#custom_title_container').hasClass('hidden')) {
+                    $('#custom_title_input').focus();
+                }
+            });
+
+            $('#clear_title_button').click(function(e) {
+                e.preventDefault();
+                $('#custom_title_input').val('');
             });
 
             $('#search_input').on('input', function() {

@@ -274,7 +274,7 @@ def parse_report_tsv(tsv_stream):
     return report_df
 
 
-def plot_peptides(peptide_positions_df, fasta_df, selected_protein_id, global_log2_min, global_log2_max, p_value_column, p_value_name):
+def plot_peptides(peptide_positions_df, fasta_df, selected_protein_id, global_log2_min, global_log2_max, p_value_column, p_value_name, custom_title):
     # get the protein sequence and length
     protein_sequence = fasta_df.loc[fasta_df['uniprot_id'] == selected_protein_id, 'sequence'].iloc[0]
     protein_length = len(protein_sequence)
@@ -381,8 +381,9 @@ def plot_peptides(peptide_positions_df, fasta_df, selected_protein_id, global_lo
 
     final_height = max(current_y + 50, min_height)
 
+    display_title = custom_title.strip() if custom_title else selected_protein_name
     layout = go.Layout(
-        title=f'Peptide Mapping for {selected_protein_name}',
+        title=f'Peptide Mapping for {display_title}',
         xaxis=dict(
             range=[1, protein_length],
             tickmode='array',
@@ -660,6 +661,7 @@ def plot_peptides_route():
     proteotypic_only = request.form.get('proteotypic_checkbox') == 'true'
     sample_name_cleanup = request.form.get('sample_name_cleanup', 'none')
     sample_name_custom_pattern = request.form.get('sample_name_custom_pattern', '')
+    custom_title = request.form.get('custom_title', '')
 
     if 'fasta_data' in session and 'report_data' in session and search_input:
         fasta_df = pd.read_json(StringIO(session['fasta_data']))
@@ -693,7 +695,16 @@ def plot_peptides_route():
         if peptide_positions_df.empty:
             return jsonify({'error': 'No peptide positions found.'}), 400
 
-        return plot_peptides(peptide_positions_df, fasta_df, selected_protein_id, global_log2_min, global_log2_max, p_value_column, p_value_name)
+        return plot_peptides(
+            peptide_positions_df,
+            fasta_df,
+            selected_protein_id,
+            global_log2_min,
+            global_log2_max,
+            p_value_column,
+            p_value_name,
+            custom_title
+        )
 
     except Exception as e:
         return jsonify({'error': str(e)}), 400
