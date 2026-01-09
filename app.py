@@ -150,6 +150,48 @@ def parse_fasta(fasta_stream, organism):
     return fasta_df
 
 
+def normalize_search_input(search_input):
+    if search_input is None:
+        return ''
+    return search_input.strip()
+
+
+def find_uniprot_id_by_gene_symbol(fasta_df, gene_symbol):
+    if not gene_symbol:
+        return None
+    matches = fasta_df[fasta_df['gene_symbol'].astype(str).str.upper() == gene_symbol.upper()]
+    if matches.empty:
+        return None
+    return matches['uniprot_id'].iloc[0]
+
+
+def find_uniprot_id_by_accession(fasta_df, accession):
+    if not accession:
+        return None
+    matches = fasta_df[fasta_df['uniprot_id'].astype(str).str.upper() == accession.upper()]
+    if matches.empty:
+        return None
+    return matches['uniprot_id'].iloc[0]
+
+
+def apply_sample_name_cleanup(report_df, cleanup_mode, custom_split_pattern):
+    if cleanup_mode not in {'strip_evosep', 'custom'}:
+        return report_df
+
+    cleaned_df = report_df.copy()
+    if cleanup_mode == 'strip_evosep':
+        cleaned_df['Run'] = cleaned_df['Run'].astype(str).apply(
+            lambda value: value.split('_', 1)[0]
+        )
+    else:
+        pattern = (custom_split_pattern or '').strip()
+        if pattern:
+            cleaned_df['Run'] = cleaned_df['Run'].astype(str).apply(
+                lambda value: value.split(pattern, 1)[0]
+            )
+    return cleaned_df
+
+
 def detect_file_type(tsv_stream):
     header = tsv_stream.readline().decode('utf-8').strip().split('\t')
     tsv_stream.seek(0)
@@ -250,6 +292,7 @@ def plot_peptides(peptide_positions_df, fasta_df, selected_protein_id, global_lo
     run_label_size = 14
     traces = []
     shapes = []
+    min_height = 130
     current_y = 0
     y_tickvals = []
     y_ticktext = []
@@ -336,8 +379,10 @@ def plot_peptides(peptide_positions_df, fasta_df, selected_protein_id, global_lo
 
     selected_protein_name = fasta_df.loc[fasta_df['uniprot_id'] == selected_protein_id, 'gene_symbol'].iloc[0]
 
+    final_height = max(current_y + 50, min_height)
+
     layout = go.Layout(
-        title=f'Peptide Mapping for {selected_protein_name} ({selected_protein_id})',
+        title=f'Peptide Mapping for {selected_protein_name}',
         xaxis=dict(
             range=[1, protein_length],
             tickmode='array',
@@ -346,7 +391,8 @@ def plot_peptides(peptide_positions_df, fasta_df, selected_protein_id, global_lo
             tickangle=0,
             tickfont=dict(size=9),
             ticks='outside',
-            fixedrange=True
+            fixedrange=True,
+            automargin=True
         ),
         yaxis=dict(
             tickmode='array',
@@ -359,9 +405,9 @@ def plot_peptides(peptide_positions_df, fasta_df, selected_protein_id, global_lo
         barmode='overlay',
         showlegend=False,
         plot_bgcolor='white',
-        margin=dict(l=250, r=100, t=40, b=0),
+        margin=dict(l=250, r=100, t=40, b=50),
         shapes=shapes,
-        height=current_y + 50
+        height=final_height
     )
 
     fig = go.Figure(data=traces, layout=layout)
@@ -610,13 +656,15 @@ def index():
 
 @app.route('/plot_peptides', methods=['POST'])
 def plot_peptides_route():
-    search_input = request.form.get('search_input')
+    search_input = normalize_search_input(request.form.get('search_input'))
     proteotypic_only = request.form.get('proteotypic_checkbox') == 'true'
+    sample_name_cleanup = request.form.get('sample_name_cleanup', 'none')
+    sample_name_custom_pattern = request.form.get('sample_name_custom_pattern', '')
 
-    if 'fasta_data' in session and 'report_data' in session and search_input is not None:
+    if 'fasta_data' in session and 'report_data' in session and search_input:
         fasta_df = pd.read_json(StringIO(session['fasta_data']))
         report_df = pd.read_json(StringIO(session['report_data']))
-        selected_protein_id = fasta_df.loc[fasta_df['uniprot_id'] == search_input, 'uniprot_id']
+        report_df = apply_sample_name_cleanup(report_df, sample_name_cleanup, sample_name_custom_pattern)
 
         # find the P.Value column
         p_value_column = next((col for col in report_df.columns if re.match(r'^P\.Value', col)), None)
@@ -630,12 +678,11 @@ def plot_peptides_route():
         global_log2_min = report_df[np.isfinite(report_df['log2_intensity'])]['log2_intensity'].min()
         global_log2_max = report_df['log2_intensity'].max()
 
-        if len(selected_protein_id) == 0:
-            selected_protein_id = fasta_df.loc[fasta_df['gene_symbol'] == search_input, 'uniprot_id']
-            if len(selected_protein_id) == 0:
-                return jsonify({'error': 'No protein found for the given search input.'}), 400
-
-        selected_protein_id = selected_protein_id.iloc[0]
+        selected_protein_id = find_uniprot_id_by_gene_symbol(fasta_df, search_input)
+        if selected_protein_id is None:
+            selected_protein_id = find_uniprot_id_by_accession(fasta_df, search_input)
+        if selected_protein_id is None:
+            return jsonify({'error': 'No protein found for the given search input.'}), 400
 
     else:
         return jsonify({'error': 'All fields must be provided.'}), 400
@@ -654,18 +701,16 @@ def plot_peptides_route():
 
 @app.route('/plot_features', methods=['POST'])
 def plot_features_route():
-    search_input = request.form.get('search_input')
+    search_input = normalize_search_input(request.form.get('search_input'))
 
-    if 'fasta_data' in session and search_input is not None:
+    if 'fasta_data' in session and search_input:
         fasta_df = pd.read_json(StringIO(session['fasta_data']))
 
-        selected_protein_id = fasta_df.loc[fasta_df['uniprot_id'] == search_input, 'uniprot_id']
-        if len(selected_protein_id) == 0:
-            selected_protein_id = fasta_df.loc[fasta_df['gene_symbol'] == search_input, 'uniprot_id']
-            if len(selected_protein_id) == 0:
-                return jsonify({'error': 'No protein found for the given search input.'}), 400
-
-        selected_protein_id = selected_protein_id.iloc[0]
+        selected_protein_id = find_uniprot_id_by_gene_symbol(fasta_df, search_input)
+        if selected_protein_id is None:
+            selected_protein_id = find_uniprot_id_by_accession(fasta_df, search_input)
+        if selected_protein_id is None:
+            return jsonify({'error': 'No protein found for the given search input.'}), 400
     else:
         return jsonify({'error': 'All fields must be provided.'}), 400
 
@@ -688,6 +733,22 @@ def upload_files():
         return jsonify({'message': 'Files uploaded successfully'}), 200
     else:
         return jsonify({'error': 'Missing files'}), 400
+
+
+@app.route('/autocomplete', methods=['GET'])
+def autocomplete():
+    query = normalize_search_input(request.args.get('query'))
+    if 'fasta_data' not in session or not query:
+        return jsonify({'suggestions': []}), 200
+
+    fasta_df = pd.read_json(StringIO(session['fasta_data']))
+    gene_symbols = fasta_df['gene_symbol'].astype(str)
+    uniprot_ids = fasta_df['uniprot_id'].astype(str)
+    candidates = pd.concat([gene_symbols, uniprot_ids], ignore_index=True).dropna()
+    candidates = pd.Series(candidates.unique())
+    matches = candidates[candidates.str.contains(query, case=False, regex=False)]
+    suggestions = matches.head(50).tolist()
+    return jsonify({'suggestions': suggestions}), 200
 
 
 @app.route('/flush', methods=['POST'])

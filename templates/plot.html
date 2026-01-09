@@ -119,14 +119,30 @@
                 <label for="proteotypic_checkbox">Proteotypic:</label>
                 <input type="checkbox" id="proteotypic_checkbox" name="proteotypic_checkbox">
             </div>
+            <div class="form-group" id="sample_name_container">
+                <label for="sample_name_cleanup">Sample name:</label>
+                <select id="sample_name_cleanup" name="sample_name_cleanup">
+                    <option value="none">Keep as-is</option>
+                    <option value="strip_evosep">Remove EvoSep position</option>
+                    <option value="custom">Custom split</option>
+                </select>
+            </div>
+            <div class="form-group hidden" id="sample_name_custom_container">
+                <label for="sample_name_custom_pattern">Split pattern:</label>
+                <input type="text" id="sample_name_custom_pattern" name="sample_name_custom_pattern" placeholder="e.g. _ or -">
+            </div>
             <div class="form-group">
                 <button type="button" id="upload_button">Upload Files</button>
                 <button type="button" id="new_report_button" class="hidden">New Report</button>
             </div>
             <div class="form-group hidden" id="search_container">
-                <label for="search_input">Search:</label>
-                <input type="text" id="search_input" name="search_input" placeholder="UniProt ID or Gene Symbol">
+                <label for="search_input">Gene name:</label>
+                <input type="text" id="search_input" name="search_input" placeholder="Gene name">
                 <button type="button" id="submit_button">Map Peptides</button>
+            </div>
+            <div class="form-group hidden" id="stats_container">
+                <button type="button" id="show_all_stats_button">Show all stats</button>
+                <button type="button" id="clear_stats_button">Clear stats</button>
             </div>
             <div class="timer_container">
                 <div id="timer" class="timer hidden">Session will expire in 30:00 minutes</div>
@@ -245,6 +261,7 @@
                 document.getElementById('peptides_plot').style.display = 'none';
                 document.getElementById('features_plot').style.display = 'none';
                 document.getElementById('timer').classList.add('hidden');
+                document.getElementById('stats_container').classList.add('hidden');
                 stopTimer();
             });
         });
@@ -255,6 +272,8 @@
             let formData = new FormData();
             formData.append('search_input', $('#search_input').val());
             formData.append('proteotypic_checkbox', $('#proteotypic_checkbox').is(':checked'));
+            formData.append('sample_name_cleanup', $('#sample_name_cleanup').val());
+            formData.append('sample_name_custom_pattern', $('#sample_name_custom_pattern').val());
 
             $.ajax({
                 url: '/plot_peptides',
@@ -268,6 +287,7 @@
                     var peptidePlotDiv = document.getElementById('peptides_plot').getElementsByClassName('js-plotly-plot')[0];
                     if (peptidePlotDiv) {
                         setupPersistentHover(peptidePlotDiv);
+                        document.getElementById('stats_container').classList.remove('hidden');
                     }
                 },
                 error: function(xhr) {
@@ -279,6 +299,7 @@
                     }
                     errorMsg = '<div class="error-message">' + errorMsg + '</div>';
                     $('#peptides_plot').html(errorMsg);
+                    document.getElementById('stats_container').classList.add('hidden');
                 }
             });
 
@@ -308,18 +329,18 @@
             });
         }
 
-        function setupPersistentHover(plotDiv) {
+        function getPersistentHoverLayer(plotDiv) {
             const mainSvgs = plotDiv.querySelectorAll('.main-svg');
             if (mainSvgs.length === 0) {
                 console.error("No main SVG elements found in plot");
-                return;
+                return null;
             }
 
-            const targetSvg = mainSvgs[1];
+            const targetSvg = mainSvgs[1] || mainSvgs[0];
             const layerAbove = targetSvg.querySelector('.layer-above');
             if (!layerAbove) {
                 console.error("Layer-above element not found in plot");
-                return;
+                return null;
             }
 
             let persistentHoverLayer = layerAbove.querySelector('.persistent-hoverlayer');
@@ -332,6 +353,15 @@
                 } else {
                     layerAbove.appendChild(persistentHoverLayer);
                 }
+            }
+
+            return persistentHoverLayer;
+        }
+
+        function setupPersistentHover(plotDiv) {
+            const persistentHoverLayer = getPersistentHoverLayer(plotDiv);
+            if (!persistentHoverLayer) {
+                return;
             }
 
             plotDiv.on('plotly_click', function(data) {
@@ -365,6 +395,91 @@
             });
         }
 
+        function clearPersistentHoverLayer(plotDiv) {
+            const persistentHoverLayer = getPersistentHoverLayer(plotDiv);
+            if (persistentHoverLayer) {
+                persistentHoverLayer.innerHTML = '';
+            }
+        }
+
+        function cloneHoverBoxesToPersistent(plotDiv, persistentHoverLayer) {
+            const hoverLayer = plotDiv.getElementsByClassName("hoverlayer")[0];
+            if (!hoverLayer) {
+                return;
+            }
+            const hoverBoxes = hoverLayer.getElementsByClassName("hovertext");
+            Array.from(hoverBoxes).forEach(hoverBox => {
+                const existingHoverBox = Array.from(persistentHoverLayer.children).find(child =>
+                    child.textContent === hoverBox.textContent
+                );
+                if (!existingHoverBox) {
+                    const persistentHoverBox = hoverBox.cloneNode(true);
+                    persistentHoverBox.style.pointerEvents = 'all';
+                    const hoverBoxId = 'hover-' + Date.now() + '-' + Math.floor(Math.random() * 10000);
+                    persistentHoverBox.setAttribute('id', hoverBoxId);
+                    persistentHoverBox.addEventListener('click', function(e) {
+                        e.stopPropagation();
+                        this.remove();
+                    });
+                    persistentHoverLayer.appendChild(persistentHoverBox);
+                }
+            });
+        }
+
+        function getPeptidePlotDiv() {
+            const peptidesPlot = document.getElementById('peptides_plot');
+            if (!peptidesPlot) {
+                return null;
+            }
+            return peptidesPlot.getElementsByClassName('js-plotly-plot')[0];
+        }
+
+        function collectPlotPoints(plotDiv) {
+            const points = [];
+            if (!plotDiv || !plotDiv._fullData) {
+                return points;
+            }
+            plotDiv._fullData.forEach((trace, traceIndex) => {
+                const pointCount = trace.x ? trace.x.length : 0;
+                for (let i = 0; i < pointCount; i++) {
+                    points.push({ curveNumber: traceIndex, pointNumber: i });
+                }
+            });
+            return points;
+        }
+
+        function showAllStats(plotDiv) {
+            if (!plotDiv || !window.Plotly) {
+                return;
+            }
+            const persistentHoverLayer = getPersistentHoverLayer(plotDiv);
+            if (!persistentHoverLayer) {
+                return;
+            }
+
+            clearPersistentHoverLayer(plotDiv);
+            const points = collectPlotPoints(plotDiv);
+            if (points.length === 0) {
+                return;
+            }
+
+            let currentIndex = 0;
+            const step = function() {
+                if (currentIndex >= points.length) {
+                    Plotly.Fx.unhover(plotDiv);
+                    return;
+                }
+                Plotly.Fx.hover(plotDiv, [points[currentIndex]]);
+                setTimeout(function() {
+                    cloneHoverBoxesToPersistent(plotDiv, persistentHoverLayer);
+                    Plotly.Fx.unhover(plotDiv);
+                    currentIndex += 1;
+                    setTimeout(step, 0);
+                }, 0);
+            };
+            step();
+        }
+
         function applyCrispEdges() {
             const colorbarGroups = document.querySelectorAll('g.colorbar');
             colorbarGroups.forEach(group => {
@@ -387,6 +502,21 @@
                 e.preventDefault();
                 fetchPlots();
                 resetTimer();
+            });
+
+            $('#sample_name_cleanup').on('change', function() {
+                const isCustom = $(this).val() === 'custom';
+                $('#sample_name_custom_container').toggleClass('hidden', !isCustom);
+            });
+
+            $('#show_all_stats_button').click(function(e) {
+                e.preventDefault();
+                showAllStats(getPeptidePlotDiv());
+            });
+
+            $('#clear_stats_button').click(function(e) {
+                e.preventDefault();
+                clearPersistentHoverLayer(getPeptidePlotDiv());
             });
         });
     </script>
