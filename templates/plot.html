@@ -204,7 +204,19 @@
             clearTimeout(timeoutInterval);
         }
 
+        function resetFormState() {
+            const form = document.querySelector('form');
+            if (form) {
+                form.reset();
+            }
+            $('#gene_suggestions').empty();
+            $('#custom_title_container').addClass('hidden');
+            $('#sample_name_custom_container').addClass('hidden');
+            $('#stats_container').addClass('hidden');
+        }
+
         window.onload = function () {
+            resetFormState();
             var display = document.querySelector('#timer');
             if (!display.classList.contains('hidden')) {
                 startTimer(sessionTime, display);
