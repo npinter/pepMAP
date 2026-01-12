@@ -89,7 +89,7 @@
             margin-left: 0;
             margin-right: auto;
         }
-        #fasta_filename, #report_filename {
+        #fasta_filename, #report_filename, #custom_features_filename {
             flex: 0;
             margin-left: 0;
             margin-right: auto;
@@ -116,6 +116,15 @@
                     <option value="HUMAN">Human</option>
                     <option value="MOUSE">Mouse</option>
                 </select>
+            </div>
+            <div class="form-group">
+                <label for="custom_features_file">Custom features:</label>
+                <input type="file" id="custom_features_file" name="custom_features_file" accept=".tsv,.txt,text/tab-separated-values">
+                <span id="custom_features_filename" class="hidden data-filenames"></span>
+            </div>
+            <div class="form-group hidden" id="custom_features_label_container">
+                <label for="custom_features_label">Custom label:</label>
+                <input type="text" id="custom_features_label" name="custom_features_label" placeholder="e.g. Antibody Epitopes">
             </div>
             <div class="form-group" id="proteotypic_container">
                 <label for="proteotypic_checkbox">Proteotypic:</label>
@@ -168,6 +177,8 @@
         let sessionTime = 1800;
         let timeoutInterval;
         let persistentHoverLayer = null;
+        let hasCustomFeatures = false;
+        let customFeaturesLabel = '';
 
         function startTimer(duration, display) {
             let timer = duration, minutes, seconds;
@@ -213,6 +224,12 @@
             $('#custom_title_container').addClass('hidden');
             $('#sample_name_custom_container').addClass('hidden');
             $('#stats_container').addClass('hidden');
+            $('#custom_features_filename').addClass('hidden').text('');
+            $('#custom_features_file').removeClass('hidden').val('');
+            $('#custom_features_label').prop('disabled', false).val('');
+            $('#custom_features_label_container').addClass('hidden');
+            hasCustomFeatures = false;
+            customFeaturesLabel = '';
         }
 
         window.onload = function () {
@@ -240,11 +257,20 @@
             formData.append('report_file', document.getElementById('report_file').files[0]);
             formData.append('fasta_file', document.getElementById('fasta_file').files[0]);
             formData.append('organism', document.getElementById('organism').value);
+            formData.append('custom_features_file', document.getElementById('custom_features_file').files[0]);
+            formData.append('custom_features_label', document.getElementById('custom_features_label').value);
 
             fetch('/upload', {
                 method: 'POST',
                 body: formData,
-            }).then(response => response.json())
+            }).then(response => {
+                if (!response.ok) {
+                    return response.json().then(data => {
+                        throw new Error(data.error || 'Upload failed');
+                    });
+                }
+                return response.json();
+            })
               .then(data => {
                   document.getElementById('report_filename').textContent = document.getElementById('report_file').files[0].name;
                   document.getElementById('fasta_filename').textContent = document.getElementById('fasta_file').files[0].name;
@@ -258,6 +284,18 @@
                   document.getElementById('new_report_button').classList.remove('hidden');
                   document.getElementById('timer').classList.remove('hidden');
                   resetTimer();
+                  hasCustomFeatures = Boolean(data.custom_features_uploaded);
+                  customFeaturesLabel = data.custom_features_label || '';
+                  if (hasCustomFeatures) {
+                      document.getElementById('custom_features_filename').textContent = document.getElementById('custom_features_file').files[0].name;
+                      document.getElementById('custom_features_filename').classList.remove('hidden');
+                      document.getElementById('custom_features_file').classList.add('hidden');
+                      document.getElementById('custom_features_label').value = customFeaturesLabel;
+                      document.getElementById('custom_features_label').disabled = true;
+                      document.getElementById('custom_features_label_container').classList.remove('hidden');
+                  } else {
+                      document.getElementById('custom_features_label_container').classList.add('hidden');
+                  }
               })
               .catch(error => {
                   console.error('Error:', error);
@@ -275,18 +313,36 @@
             }).then(() => {
                 document.getElementById('report_file').classList.remove('hidden');
                 document.getElementById('fasta_file').classList.remove('hidden');
+                document.getElementById('custom_features_file').classList.remove('hidden');
+                document.getElementById('custom_features_file').value = '';
                 document.getElementById('organism').disabled = false;
                 document.getElementById('upload_button').classList.remove('hidden');
                 document.getElementById('report_filename').classList.add('hidden');
                 document.getElementById('fasta_filename').classList.add('hidden');
+                document.getElementById('custom_features_filename').classList.add('hidden');
+                document.getElementById('custom_features_label').disabled = false;
+                document.getElementById('custom_features_label').value = '';
+                document.getElementById('custom_features_label_container').classList.add('hidden');
                 document.getElementById('search_container').classList.add('hidden');
                 document.getElementById('new_report_button').classList.add('hidden');
                 document.getElementById('peptides_plot').style.display = 'none';
                 document.getElementById('features_plot').style.display = 'none';
                 document.getElementById('timer').classList.add('hidden');
                 document.getElementById('stats_container').classList.add('hidden');
+                hasCustomFeatures = false;
+                customFeaturesLabel = '';
                 stopTimer();
             });
+        });
+
+        document.getElementById('custom_features_file').addEventListener('change', function() {
+            const hasFile = this.files && this.files.length > 0;
+            if (hasFile) {
+                document.getElementById('custom_features_label_container').classList.remove('hidden');
+            } else {
+                document.getElementById('custom_features_label_container').classList.add('hidden');
+                document.getElementById('custom_features_label').value = '';
+            }
         });
 
         function fetchPlots() {
@@ -351,6 +407,7 @@
                     $('#features_plot').html(errorMsg);
                 }
             });
+
         }
 
         function getPersistentHoverLayer(plotDiv) {

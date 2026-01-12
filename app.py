@@ -274,6 +274,66 @@ def parse_report_tsv(tsv_stream):
     return report_df
 
 
+def parse_custom_features_tsv(tsv_stream):
+    custom_df = pd.read_csv(tsv_stream, delimiter='\t')
+    custom_df.columns = [col.strip() for col in custom_df.columns]
+    column_map = {col.strip().lower(): col for col in custom_df.columns}
+    required = {'uniprot', 'position', 'description', 'literature'}
+    missing = sorted(req for req in required if req not in column_map)
+    if missing:
+        raise ValueError(f"Missing required columns: {', '.join(missing)}")
+
+    custom_df = custom_df.rename(columns={
+        column_map['uniprot']: 'uniprot_id',
+        column_map['position']: 'position',
+        column_map['description']: 'description',
+        column_map['literature']: 'literature'
+    })
+
+    def parse_position_value(value):
+        if pd.isna(value):
+            return None, None
+        text = str(value).strip()
+        if not text:
+            return None, None
+        range_match = re.match(r'^(\d+)\s*-\s*(\d+)$', text)
+        if range_match:
+            return int(range_match.group(1)), int(range_match.group(2))
+        single_match = re.match(r'^(\d+)$', text)
+        if single_match:
+            position = int(single_match.group(1))
+            return position, position
+        return None, None
+
+    def normalize_text(value):
+        if pd.isna(value):
+            return ''
+        return str(value).strip()
+
+    rows = []
+    for index, row in custom_df.iterrows():
+        start, end = parse_position_value(row['position'])
+        if start is None or end is None:
+            raise ValueError(f"Invalid position at row {index + 2}: {row['position']}")
+        if start > end:
+            raise ValueError(f"Start position exceeds end at row {index + 2}: {row['position']}")
+        uniprot_id = normalize_text(row['uniprot_id'])
+        if not uniprot_id:
+            raise ValueError(f"Missing UniProt ID at row {index + 2}.")
+        rows.append({
+            'uniprot_id': uniprot_id,
+            'start': start,
+            'end': end,
+            'description': normalize_text(row['description']),
+            'literature': normalize_text(row['literature'])
+        })
+
+    parsed_df = pd.DataFrame(rows)
+    if parsed_df.empty:
+        raise ValueError("No valid custom features found in the uploaded file.")
+    return parsed_df
+
+
 def plot_peptides(peptide_positions_df, fasta_df, selected_protein_id, global_log2_min, global_log2_max, p_value_column, p_value_name, custom_title):
     # get the protein sequence and length
     protein_sequence = fasta_df.loc[fasta_df['uniprot_id'] == selected_protein_id, 'sequence'].iloc[0]
@@ -424,7 +484,7 @@ def plot_peptides(peptide_positions_df, fasta_df, selected_protein_id, global_lo
     return plot_peptides_html
 
 
-def plot_features(fasta_df, selected_protein_id):
+def plot_features(fasta_df, selected_protein_id, custom_features_df=None, custom_label=None):
     protein_features = fetch_protein_features(selected_protein_id)
     protein_sequence = fasta_df.loc[fasta_df['uniprot_id'] == selected_protein_id, 'sequence'].iloc[0]
     protein_length = len(protein_sequence)
@@ -548,6 +608,48 @@ def plot_features(fasta_df, selected_protein_id):
                     hoverlabel=dict(align='left')
                 )
             feature_traces.append(feature_trace)
+
+    if custom_features_df is not None and custom_label:
+        filtered_df = custom_features_df[
+            custom_features_df['uniprot_id'].astype(str).str.upper() == selected_protein_id.upper()
+        ]
+        if not filtered_df.empty:
+            custom_group = custom_label
+            if custom_group not in feature_groups:
+                feature_groups[custom_group] = len(feature_groups)
+
+            for _, feature in filtered_df.iterrows():
+                feature_length = feature['end'] - feature['start']
+                feature_length_offset = 0
+                feature_position = f"{feature['start']} - {feature['end']}"
+
+                if feature_length == 0:
+                    feature_length_offset = 1
+                    feature_position = f"{feature['start']}"
+
+                description = feature['description'] or 'Custom Feature'
+                literature = feature['literature']
+                hover_lines = [description, f"Position: {feature_position}"]
+                if literature and literature.lower() != 'nan':
+                    hover_lines.append(f"Literature: {literature}")
+                hovertext = "<br>".join(hover_lines)
+
+                feature_traces.append(
+                    go.Bar(
+                        x=[feature_length + feature_length_offset],
+                        y=[feature_groups[custom_group]],
+                        base=feature['start'],
+                        orientation='h',
+                        width=feature_bar_height,
+                        marker=dict(
+                            color='wheat',
+                            line=dict(color='saddlebrown', width=feature_bar_line_width)
+                        ),
+                        hoverinfo='text',
+                        hovertext=hovertext,
+                        hoverlabel=dict(align='left')
+                    )
+                )
 
         layout = go.Layout(
             xaxis=dict(
@@ -716,6 +818,11 @@ def plot_features_route():
 
     if 'fasta_data' in session and search_input:
         fasta_df = pd.read_json(StringIO(session['fasta_data']))
+        custom_features_df = None
+        custom_features_label = None
+        if 'custom_features_data' in session:
+            custom_features_df = pd.read_json(StringIO(session['custom_features_data']))
+            custom_features_label = session.get('custom_features_label', 'Custom Features')
 
         selected_protein_id = find_uniprot_id_by_gene_symbol(fasta_df, search_input)
         if selected_protein_id is None:
@@ -726,7 +833,7 @@ def plot_features_route():
         return jsonify({'error': 'All fields must be provided.'}), 400
 
     try:
-        return plot_features(fasta_df, selected_protein_id)
+        return plot_features(fasta_df, selected_protein_id, custom_features_df, custom_features_label)
 
     except Exception as e:
         return jsonify({'error': str(e)}), 400
@@ -737,11 +844,27 @@ def upload_files():
     report_file = request.files.get('report_file')
     fasta_file = request.files.get('fasta_file')
     organism = request.form.get('organism')
+    custom_features_file = request.files.get('custom_features_file')
+    custom_features_label = normalize_search_input(request.form.get('custom_features_label'))
 
     if report_file and fasta_file:
         session['fasta_data'] = parse_fasta(fasta_file.stream, organism).to_json()
         session['report_data'] = parse_report_tsv(report_file.stream).to_json()
-        return jsonify({'message': 'Files uploaded successfully'}), 200
+        custom_features_uploaded = False
+        if custom_features_file:
+            if not custom_features_label:
+                return jsonify({'error': 'Custom features label is required when uploading a custom features file.'}), 400
+            session['custom_features_data'] = parse_custom_features_tsv(custom_features_file.stream).to_json()
+            session['custom_features_label'] = custom_features_label
+            custom_features_uploaded = True
+        else:
+            session.pop('custom_features_data', None)
+            session.pop('custom_features_label', None)
+        return jsonify({
+            'message': 'Files uploaded successfully',
+            'custom_features_uploaded': custom_features_uploaded,
+            'custom_features_label': custom_features_label
+        }), 200
     else:
         return jsonify({'error': 'Missing files'}), 400
 
