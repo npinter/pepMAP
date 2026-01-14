@@ -1,5 +1,9 @@
 import os
 import re
+import json
+import time
+import uuid
+import tempfile
 import numpy as np
 import shutil
 import pandas as pd
@@ -7,22 +11,137 @@ import plotly.io as pio
 import plotly.graph_objs as go
 import requests
 from io import StringIO
+from pathlib import Path
 from flask_caching import Cache
-from flask import Flask, render_template, request, jsonify, session
+from flask import Flask, render_template, request, jsonify
 from apscheduler.schedulers.background import BackgroundScheduler
 from collections import OrderedDict
-from flask_session import Session
-from datetime import timedelta
 
 app = Flask(__name__)
 app.config['CACHE_TYPE'] = 'SimpleCache'
 app.config['SECRET_KEY'] = os.urandom(24)
-app.config['SESSION_TYPE'] = 'filesystem'
-app.config['SESSION_PERMANENT'] = False
-app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(minutes=30)
-app.config['SESSION_FILE_DIR'] = 'flask_session'
 cache = Cache(app)
-Session(app)
+
+PEPMAP_STORE_DIR = Path(os.environ.get('PEPMAP_STORE_DIR', 'storage'))
+PEPMAP_STORE_DIR.mkdir(parents=True, exist_ok=True)
+PEPMAP_STORE_TTL_SECONDS = int(os.environ.get('PEPMAP_STORE_TTL_SECONDS', '1800'))
+
+
+class FileSessionStore:
+    def __init__(self, root, ttl_seconds=1800):
+        self.root = root
+        self.ttl_seconds = ttl_seconds
+
+    def _path(self, sid):
+        return self.root / f"{sid}.json"
+
+    def _write(self, sid, payload):
+        tmp = tempfile.NamedTemporaryFile('w', delete=False, dir=str(self.root))
+        try:
+            json.dump(payload, tmp)
+            tmp.flush()
+            os.fsync(tmp.fileno())
+        finally:
+            tmp.close()
+        os.replace(tmp.name, self._path(sid))
+
+    def create(self, meta=None):
+        sid = uuid.uuid4().hex
+        payload = {
+            'created_at': time.time(),
+            'updated_at': time.time(),
+            'ttl': self.ttl_seconds,
+            'meta': meta or {},
+            'data': {}
+        }
+        self._write(sid, payload)
+        return sid
+
+    def create_with_id(self, sid, meta=None):
+        payload = {
+            'created_at': time.time(),
+            'updated_at': time.time(),
+            'ttl': self.ttl_seconds,
+            'meta': meta or {},
+            'data': {}
+        }
+        self._write(sid, payload)
+        return sid
+
+    def get_payload(self, sid):
+        path = self._path(sid)
+        if not path.exists():
+            return None
+        try:
+            payload = json.loads(path.read_text())
+        except Exception:
+            return None
+        ttl = int(payload.get('ttl', self.ttl_seconds))
+        updated_at = float(payload.get('updated_at', 0))
+        if time.time() - updated_at > ttl:
+            self.delete(sid)
+            return None
+        return payload
+
+    def update(self, sid, **kv):
+        payload = self.get_payload(sid)
+        if payload is None:
+            return False
+        payload['updated_at'] = time.time()
+        payload.setdefault('data', {}).update(kv)
+        self._write(sid, payload)
+        return True
+
+    def read(self, sid, key):
+        payload = self.get_payload(sid)
+        if payload is None:
+            return None
+        return payload.get('data', {}).get(key)
+
+    def delete(self, sid):
+        try:
+            self._path(sid).unlink()
+        except FileNotFoundError:
+            pass
+
+    def purge_expired(self):
+        now = time.time()
+        for f in self.root.glob('*.json'):
+            try:
+                payload = json.loads(f.read_text())
+                ttl = int(payload.get('ttl', self.ttl_seconds))
+                updated_at = float(payload.get('updated_at', 0))
+                if now - updated_at > ttl:
+                    f.unlink()
+            except Exception:
+                pass
+
+
+store = FileSessionStore(PEPMAP_STORE_DIR, ttl_seconds=PEPMAP_STORE_TTL_SECONDS)
+
+
+def normalize_session_id(raw_session_id):
+    if raw_session_id is None:
+        return None
+    session_id = raw_session_id.strip()
+    if not session_id:
+        return None
+    if not re.match(r'^[A-Za-z0-9_-]{8,128}$', session_id):
+        return None
+    return session_id
+
+
+def get_request_session_id():
+    if request.method == 'GET':
+        raw_session_id = request.args.get('session_id')
+    else:
+        raw_session_id = request.form.get('session_id')
+    if raw_session_id is None:
+        return None, None
+    session_id = normalize_session_id(raw_session_id)
+    if session_id is None:
+        return None, 'Invalid session_id format.'
+    return session_id, None
 
 
 def generate_dynamic_ticks(protein_length):
@@ -154,6 +273,15 @@ def normalize_search_input(search_input):
     if search_input is None:
         return ''
     return search_input.strip()
+
+
+def normalize_organism(organism):
+    if organism is None:
+        return None
+    organism_value = organism.strip().upper()
+    if organism_value in {'HUMAN', 'MOUSE'}:
+        return organism_value
+    return None
 
 
 def find_uniprot_id_by_gene_symbol(fasta_df, gene_symbol):
@@ -723,9 +851,19 @@ def find_peptide_positions(report_df, fasta_df, selected_protein_id, proteotypic
     return peptide_positions_df
 
 
-def clear_filesystem_sessions(session_dir):
-    for filename in os.listdir(session_dir):
-        file_path = os.path.join(session_dir, filename)
+def start_scheduler():
+    scheduler = BackgroundScheduler()
+    scheduler.add_job(
+        store.purge_expired,
+        'cron',
+        hour=1
+    )
+    scheduler.start()
+
+
+def clear_store_dir(store_dir):
+    for filename in os.listdir(store_dir):
+        file_path = os.path.join(store_dir, filename)
         try:
             if os.path.isfile(file_path) or os.path.islink(file_path):
                 os.unlink(file_path)
@@ -733,23 +871,6 @@ def clear_filesystem_sessions(session_dir):
                 shutil.rmtree(file_path)
         except Exception as e:
             print('Failed to delete %s. Reason: %s' % (file_path, e))
-
-
-def start_scheduler():
-    scheduler = BackgroundScheduler()
-    # trigger 'clear_filesystem_sessions' at 1 AM every day
-    scheduler.add_job(
-        clear_filesystem_sessions,
-        'cron',
-        hour=1,
-        args=[app.config['SESSION_FILE_DIR']]
-    )
-    scheduler.start()
-
-
-@app.before_request
-def make_session_permanent():
-    session.permanent = False
 
 
 @app.route('/', methods=['GET'])
@@ -764,32 +885,38 @@ def plot_peptides_route():
     sample_name_cleanup = request.form.get('sample_name_cleanup', 'none')
     sample_name_custom_pattern = request.form.get('sample_name_custom_pattern', '')
     custom_title = request.form.get('custom_title', '')
+    session_id, session_error = get_request_session_id()
+    if session_error:
+        return jsonify({'error': session_error}), 400
 
-    if 'fasta_data' in session and 'report_data' in session and search_input:
-        fasta_df = pd.read_json(StringIO(session['fasta_data']))
-        report_df = pd.read_json(StringIO(session['report_data']))
-        report_df = apply_sample_name_cleanup(report_df, sample_name_cleanup, sample_name_custom_pattern)
+    if not session_id:
+        return jsonify({'error': 'session_id is required.'}), 400
 
-        # find the P.Value column
-        p_value_column = next((col for col in report_df.columns if re.match(r'^P\.Value', col)), None)
+    fasta_data = store.read(session_id, 'fasta_data')
+    report_data = store.read(session_id, 'report_data')
+    if not fasta_data or not report_data or not search_input:
+        return jsonify({'error': 'All fields must be provided (and session must contain uploaded data).'}), 400
+    fasta_df = pd.read_json(StringIO(fasta_data))
+    report_df = pd.read_json(StringIO(report_data))
+    report_df = apply_sample_name_cleanup(report_df, sample_name_cleanup, sample_name_custom_pattern)
 
-        # extract the value in brackets for hover text
-        p_value_name = re.search(r'\((.*?)\)', p_value_column)
-        p_value_name = p_value_name.group(1) if p_value_name else p_value_column
+    # find the P.Value column
+    p_value_column = next((col for col in report_df.columns if re.match(r'^P\.Value', col)), None)
 
-        # calculate global log2 intensities
-        report_df['log2_intensity'] = np.log2(report_df['Precursor.Normalised'])
-        global_log2_min = report_df[np.isfinite(report_df['log2_intensity'])]['log2_intensity'].min()
-        global_log2_max = report_df['log2_intensity'].max()
+    # extract the value in brackets for hover text
+    p_value_name = re.search(r'\((.*?)\)', p_value_column)
+    p_value_name = p_value_name.group(1) if p_value_name else p_value_column
 
-        selected_protein_id = find_uniprot_id_by_gene_symbol(fasta_df, search_input)
-        if selected_protein_id is None:
-            selected_protein_id = find_uniprot_id_by_accession(fasta_df, search_input)
-        if selected_protein_id is None:
-            return jsonify({'error': 'No protein found for the given search input.'}), 400
+    # calculate global log2 intensities
+    report_df['log2_intensity'] = np.log2(report_df['Precursor.Normalised'])
+    global_log2_min = report_df[np.isfinite(report_df['log2_intensity'])]['log2_intensity'].min()
+    global_log2_max = report_df['log2_intensity'].max()
 
-    else:
-        return jsonify({'error': 'All fields must be provided.'}), 400
+    selected_protein_id = find_uniprot_id_by_gene_symbol(fasta_df, search_input)
+    if selected_protein_id is None:
+        selected_protein_id = find_uniprot_id_by_accession(fasta_df, search_input)
+    if selected_protein_id is None:
+        return jsonify({'error': 'No protein found for the given search input.'}), 400
 
     try:
         # find peptide positions
@@ -815,22 +942,28 @@ def plot_peptides_route():
 @app.route('/plot_features', methods=['POST'])
 def plot_features_route():
     search_input = normalize_search_input(request.form.get('search_input'))
+    session_id, session_error = get_request_session_id()
+    if session_error:
+        return jsonify({'error': session_error}), 400
 
-    if 'fasta_data' in session and search_input:
-        fasta_df = pd.read_json(StringIO(session['fasta_data']))
-        custom_features_df = None
-        custom_features_label = None
-        if 'custom_features_data' in session:
-            custom_features_df = pd.read_json(StringIO(session['custom_features_data']))
-            custom_features_label = session.get('custom_features_label', 'Custom Features')
+    if not session_id:
+        return jsonify({'error': 'session_id is required.'}), 400
 
-        selected_protein_id = find_uniprot_id_by_gene_symbol(fasta_df, search_input)
-        if selected_protein_id is None:
-            selected_protein_id = find_uniprot_id_by_accession(fasta_df, search_input)
-        if selected_protein_id is None:
-            return jsonify({'error': 'No protein found for the given search input.'}), 400
-    else:
-        return jsonify({'error': 'All fields must be provided.'}), 400
+    fasta_data = store.read(session_id, 'fasta_data')
+    if not fasta_data or not search_input:
+        return jsonify({'error': 'All fields must be provided (and session must contain uploaded data).'}), 400
+    fasta_df = pd.read_json(StringIO(fasta_data))
+    custom_features_df = None
+    custom_features_label = None
+    custom_features_data = store.read(session_id, 'custom_features_data')
+    if custom_features_data:
+        custom_features_df = pd.read_json(StringIO(custom_features_data))
+        custom_features_label = store.read(session_id, 'custom_features_label')
+    selected_protein_id = find_uniprot_id_by_gene_symbol(fasta_df, search_input)
+    if selected_protein_id is None:
+        selected_protein_id = find_uniprot_id_by_accession(fasta_df, search_input)
+    if selected_protein_id is None:
+        return jsonify({'error': 'No protein found for the given search input.'}), 400
 
     try:
         return plot_features(fasta_df, selected_protein_id, custom_features_df, custom_features_label)
@@ -843,39 +976,85 @@ def plot_features_route():
 def upload_files():
     report_file = request.files.get('report_file')
     fasta_file = request.files.get('fasta_file')
-    organism = request.form.get('organism')
+    organism = normalize_organism(request.form.get('organism'))
     custom_features_file = request.files.get('custom_features_file')
     custom_features_label = normalize_search_input(request.form.get('custom_features_label'))
+    session_id, session_error = get_request_session_id()
+    if session_error:
+        return jsonify({'error': session_error}), 400
 
     if report_file and fasta_file:
-        session['fasta_data'] = parse_fasta(fasta_file.stream, organism).to_json()
-        session['report_data'] = parse_report_tsv(report_file.stream).to_json()
         custom_features_uploaded = False
+        if not session_id:
+            session_id = store.create(meta={'user_agent': request.headers.get('User-Agent', '')})
+        elif store.get_payload(session_id) is None:
+            store.create_with_id(session_id, meta={'user_agent': request.headers.get('User-Agent', '')})
+
+        update_kwargs = {
+            'fasta_data': parse_fasta(fasta_file.stream, organism or '').to_json(),
+            'report_data': parse_report_tsv(report_file.stream).to_json(),
+            'organism': organism,
+            'report_filename': report_file.filename,
+            'fasta_filename': fasta_file.filename,
+            'custom_features_filename': custom_features_file.filename if custom_features_file else None
+        }
         if custom_features_file:
             if not custom_features_label:
                 return jsonify({'error': 'Custom features label is required when uploading a custom features file.'}), 400
-            session['custom_features_data'] = parse_custom_features_tsv(custom_features_file.stream).to_json()
-            session['custom_features_label'] = custom_features_label
+            update_kwargs['custom_features_data'] = parse_custom_features_tsv(custom_features_file.stream).to_json()
+            update_kwargs['custom_features_label'] = custom_features_label
             custom_features_uploaded = True
         else:
-            session.pop('custom_features_data', None)
-            session.pop('custom_features_label', None)
+            update_kwargs['custom_features_data'] = None
+            update_kwargs['custom_features_label'] = None
+
+        store.update(session_id, **update_kwargs)
         return jsonify({
             'message': 'Files uploaded successfully',
             'custom_features_uploaded': custom_features_uploaded,
-            'custom_features_label': custom_features_label
+            'custom_features_label': custom_features_label,
+            'session_id': session_id
         }), 200
-    else:
-        return jsonify({'error': 'Missing files'}), 400
+    if custom_features_file:
+        if not session_id:
+            return jsonify({'error': 'session_id is required to upload custom features.'}), 400
+        if store.get_payload(session_id) is None:
+            return jsonify({'error': 'Unknown or expired session_id.'}), 404
+        if not custom_features_label:
+            return jsonify({'error': 'Custom features label is required when uploading a custom features file.'}), 400
+
+        store.update(
+            session_id,
+            custom_features_data=parse_custom_features_tsv(custom_features_file.stream).to_json(),
+            custom_features_label=custom_features_label,
+            custom_features_filename=custom_features_file.filename
+        )
+        return jsonify({
+            'message': 'Custom features uploaded successfully',
+            'custom_features_uploaded': True,
+            'custom_features_label': custom_features_label,
+            'session_id': session_id
+        }), 200
+    return jsonify({'error': 'Missing files'}), 400
 
 
 @app.route('/autocomplete', methods=['GET'])
 def autocomplete():
     query = normalize_search_input(request.args.get('query'))
-    if 'fasta_data' not in session or not query:
+    session_id, session_error = get_request_session_id()
+    if session_error:
+        return jsonify({'suggestions': []}), 200
+    if not query:
         return jsonify({'suggestions': []}), 200
 
-    fasta_df = pd.read_json(StringIO(session['fasta_data']))
+    if not session_id:
+        return jsonify({'suggestions': []}), 200
+
+    fasta_data = store.read(session_id, 'fasta_data')
+    if not fasta_data:
+        return jsonify({'suggestions': []}), 200
+    fasta_df = pd.read_json(StringIO(fasta_data))
+
     gene_symbols = fasta_df['gene_symbol'].astype(str)
     uniprot_ids = fasta_df['uniprot_id'].astype(str)
     candidates = pd.concat([gene_symbols, uniprot_ids], ignore_index=True).dropna()
@@ -885,13 +1064,42 @@ def autocomplete():
     return jsonify({'suggestions': suggestions}), 200
 
 
+@app.route('/session_info', methods=['GET'])
+def session_info():
+    session_id, session_error = get_request_session_id()
+    if session_error:
+        return jsonify({'error': session_error}), 400
+    if not session_id:
+        return jsonify({'error': 'session_id is required.'}), 400
+
+    payload = store.get_payload(session_id)
+    if payload is None:
+        return jsonify({'error': 'Unknown or expired session_id.'}), 404
+
+    data = payload.get('data', {})
+    return jsonify({
+        'session_id': session_id,
+        'report_filename': data.get('report_filename'),
+        'fasta_filename': data.get('fasta_filename'),
+        'custom_features_filename': data.get('custom_features_filename'),
+        'custom_features_label': data.get('custom_features_label'),
+        'organism': data.get('organism'),
+        'has_custom_features': bool(data.get('custom_features_data'))
+    }), 200
+
+
 @app.route('/flush', methods=['POST'])
 def flush_session():
-    session.clear()
+    session_id, session_error = get_request_session_id()
+    if session_error:
+        return jsonify({'error': session_error}), 400
+    if not session_id:
+        return jsonify({'error': 'session_id is required.'}), 400
+    store.delete(session_id)
     return jsonify({'message': 'Session cleared'}), 200
 
 
 if __name__ == '__main__':
-    clear_filesystem_sessions(app.config['SESSION_FILE_DIR'])
+    clear_store_dir(PEPMAP_STORE_DIR)
     start_scheduler()
     app.run(port=7007, debug=False)

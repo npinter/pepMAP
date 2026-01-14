@@ -175,10 +175,54 @@
 
     <script>
         let sessionTime = 1800;
+        let sessionId = null;
         let timeoutInterval;
         let persistentHoverLayer = null;
         let hasCustomFeatures = false;
         let customFeaturesLabel = '';
+
+        function applySessionData(data) {
+            sessionId = data.session_id;
+            if (data.report_filename) {
+                document.getElementById('report_filename').textContent = data.report_filename;
+                document.getElementById('report_filename').classList.remove('hidden');
+                document.getElementById('report_file').classList.add('hidden');
+            }
+            if (data.fasta_filename) {
+                document.getElementById('fasta_filename').textContent = data.fasta_filename;
+                document.getElementById('fasta_filename').classList.remove('hidden');
+                document.getElementById('fasta_file').classList.add('hidden');
+            }
+            if (data.organism) {
+                const organismSelect = document.getElementById('organism');
+                const optionValues = Array.from(organismSelect.options).map(option => option.value);
+                if (optionValues.includes(data.organism)) {
+                    organismSelect.value = data.organism;
+                    organismSelect.disabled = true;
+                }
+            }
+
+            hasCustomFeatures = Boolean(data.has_custom_features);
+            customFeaturesLabel = data.custom_features_label || '';
+            if (hasCustomFeatures) {
+                if (data.custom_features_filename) {
+                    document.getElementById('custom_features_filename').textContent = data.custom_features_filename;
+                    document.getElementById('custom_features_filename').classList.remove('hidden');
+                    document.getElementById('custom_features_file').classList.add('hidden');
+                }
+                document.getElementById('custom_features_label').value = customFeaturesLabel;
+                document.getElementById('custom_features_label').disabled = true;
+                document.getElementById('custom_features_label_container').classList.remove('hidden');
+            } else {
+                document.getElementById('custom_features_label_container').classList.add('hidden');
+            }
+
+            document.getElementById('upload_button').classList.add('hidden');
+            document.getElementById('search_container').classList.remove('hidden');
+            document.getElementById('new_report_button').classList.remove('hidden');
+            document.getElementById('timer').classList.remove('hidden');
+            resetTimer();
+        }
 
         function startTimer(duration, display) {
             let timer = duration, minutes, seconds;
@@ -193,7 +237,13 @@
 
                 if (--timer < 0) {
                     clearInterval(interval);
-                    fetch('/flush', { method: 'POST' })
+                    if (!sessionId) {
+                        location.reload();
+                        return;
+                    }
+                    const formData = new FormData();
+                    formData.append('session_id', sessionId);
+                    fetch('/flush', { method: 'POST', body: formData })
                     .then(response => response.json())
                     .then(data => {
                         console.log('Session flushed:', data);
@@ -230,6 +280,7 @@
             $('#custom_features_label_container').addClass('hidden');
             hasCustomFeatures = false;
             customFeaturesLabel = '';
+            sessionId = null;
         }
 
         window.onload = function () {
@@ -237,6 +288,27 @@
             var display = document.querySelector('#timer');
             if (!display.classList.contains('hidden')) {
                 startTimer(sessionTime, display);
+            }
+
+            const params = new URLSearchParams(window.location.search);
+            const providedSessionId = params.get('session_id');
+            if (providedSessionId) {
+                fetch('/session_info?session_id=' + encodeURIComponent(providedSessionId))
+                    .then(response => {
+                        if (!response.ok) {
+                            return response.json().then(data => {
+                                throw new Error(data.error || 'Failed to load session.');
+                            });
+                        }
+                        return response.json();
+                    })
+                    .then(data => {
+                        applySessionData(data);
+                    })
+                    .catch(error => {
+                        console.error('Session load error:', error);
+                        alert(error.message);
+                    });
             }
         };
 
@@ -272,6 +344,7 @@
                 return response.json();
             })
               .then(data => {
+                  sessionId = data.session_id;
                   document.getElementById('report_filename').textContent = document.getElementById('report_file').files[0].name;
                   document.getElementById('fasta_filename').textContent = document.getElementById('fasta_file').files[0].name;
                   document.getElementById('report_filename').classList.remove('hidden');
@@ -308,8 +381,13 @@
         });
 
         document.getElementById('new_report_button').addEventListener('click', function() {
+            const formData = new FormData();
+            if (sessionId) {
+                formData.append('session_id', sessionId);
+            }
             fetch('/flush', {
                 method: 'POST',
+                body: formData
             }).then(() => {
                 document.getElementById('report_file').classList.remove('hidden');
                 document.getElementById('fasta_file').classList.remove('hidden');
@@ -331,6 +409,7 @@
                 document.getElementById('stats_container').classList.add('hidden');
                 hasCustomFeatures = false;
                 customFeaturesLabel = '';
+                sessionId = null;
                 stopTimer();
             });
         });
@@ -349,6 +428,9 @@
             $('#peptides_plot, #features_plot').show().html('<div class="loader"></div>');
 
             let formData = new FormData();
+            if (sessionId) {
+                formData.append('session_id', sessionId);
+            }
             formData.append('search_input', $('#search_input').val());
             formData.append('proteotypic_checkbox', $('#proteotypic_checkbox').is(':checked'));
             formData.append('sample_name_cleanup', $('#sample_name_cleanup').val());
@@ -605,7 +687,8 @@
                     return;
                 }
 
-                fetch('/autocomplete?query=' + encodeURIComponent(query))
+                const sessionQuery = sessionId ? '&session_id=' + encodeURIComponent(sessionId) : '';
+                fetch('/autocomplete?query=' + encodeURIComponent(query) + sessionQuery)
                     .then(response => response.json())
                     .then(data => {
                         const options = (data.suggestions || []).map(suggestion =>
