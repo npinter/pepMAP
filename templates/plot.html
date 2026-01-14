@@ -39,6 +39,14 @@
             background-color: #f9f9f9;
             text-align: left;
             width: 600px;
+            position: relative;
+        }
+        .version-tag {
+            position: absolute;
+            right: 12px;
+            bottom: 8px;
+            font-size: 11px;
+            color: #9a9a9a;
         }
         .timer_container {
             display: flex;
@@ -168,6 +176,7 @@
                 <div id="timer" class="timer hidden">Session will expire in 30:00 minutes</div>
             </div>
         </form>
+        <div class="version-tag">v{{ app_version }}</div>
     </div>
 
     <div id="peptides_plot"><div class="loader"></div></div>

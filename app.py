@@ -22,6 +22,8 @@ app.config['CACHE_TYPE'] = 'SimpleCache'
 app.config['SECRET_KEY'] = os.urandom(24)
 cache = Cache(app)
 
+__version__ = "1.0.0"
+
 PEPMAP_STORE_DIR = Path(os.environ.get('PEPMAP_STORE_DIR', 'storage'))
 PEPMAP_STORE_DIR.mkdir(parents=True, exist_ok=True)
 PEPMAP_STORE_TTL_SECONDS = int(os.environ.get('PEPMAP_STORE_TTL_SECONDS', '1800'))
@@ -875,7 +877,7 @@ def clear_store_dir(store_dir):
 
 @app.route('/', methods=['GET'])
 def index():
-    return render_template('plot.html')
+    return render_template('plot.html', app_version=__version__)
 
 
 @app.route('/plot_peptides', methods=['POST'])
