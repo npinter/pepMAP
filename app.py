@@ -781,36 +781,36 @@ def plot_features(fasta_df, selected_protein_id, custom_features_df=None, custom
                     )
                 )
 
-        layout = go.Layout(
-            xaxis=dict(
-                range=[1, protein_length],
-                tickvals=[''],
-                ticktext=[''],
-                fixedrange=True
-            ),
-            yaxis=dict(
-                tickmode='array',
-                tickvals=list(feature_groups.values()),
-                ticktext=list(feature_groups.keys()),
-                tickfont=dict(size=feature_label_size),
-                fixedrange=True
-            ),
-            barmode='stack',
-            showlegend=False,
-            plot_bgcolor='white',
-            margin=dict(l=250, r=100, t=0, b=0),
-            height=global_features_height * len(feature_groups)
-        )
+    layout = go.Layout(
+        xaxis=dict(
+            range=[1, protein_length],
+            tickvals=[''],
+            ticktext=[''],
+            fixedrange=True
+        ),
+        yaxis=dict(
+            tickmode='array',
+            tickvals=list(feature_groups.values()),
+            ticktext=list(feature_groups.keys()),
+            tickfont=dict(size=feature_label_size),
+            fixedrange=True
+        ),
+        barmode='stack',
+        showlegend=False,
+        plot_bgcolor='white',
+        margin=dict(l=250, r=100, t=0, b=0),
+        height=global_features_height * len(feature_groups)
+    )
 
-        config = {
-            'displayModeBar': False,
-            'scrollZoom': False,
-            'staticPlot': False,
-            'doubleClick': 'reset'
-        }
+    config = {
+        'displayModeBar': False,
+        'scrollZoom': False,
+        'staticPlot': False,
+        'doubleClick': 'reset'
+    }
 
-        fig = go.Figure(data=feature_traces, layout=layout)
-        return pio.to_html(fig, full_html=False, config=config)
+    fig = go.Figure(data=feature_traces, layout=layout)
+    return pio.to_html(fig, full_html=False, config=config)
 
 
 def find_peptide_positions(report_df, fasta_df, selected_protein_id, proteotypic_only, p_value_column):
