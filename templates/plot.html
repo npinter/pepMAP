@@ -29,6 +29,11 @@
         #peptides_plot, #features_plot {
             display: none;
             margin-top: 10px;
+            text-align: center;
+        }
+        #peptides_plot .js-plotly-plot,
+        #features_plot .js-plotly-plot {
+            margin: 0 auto;
         }
         .form-container {
             display: inline-block;
@@ -38,8 +43,12 @@
             border-radius: 5px;
             background-color: #f9f9f9;
             text-align: left;
-            width: 600px;
+            width: 720px;
             position: relative;
+            font-size: 14px;
+        }
+        .form-container label {
+            font-weight: 700;
         }
         .version-tag {
             position: absolute;
@@ -77,10 +86,41 @@
         {
             flex: 1;
         }
+        .action-buttons {
+            justify-content: center;
+        }
+        .action-buttons button {
+            flex: 0 0 140px;
+        }
+        #stats_container {
+            margin-top: 10px;
+            justify-content: center;
+            gap: 10px;
+        }
+        #stats_container button {
+            flex: 0 0 140px;
+        }
+        #map_container {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin: 6px auto 0;
+            flex-basis: 100%;
+            justify-content: center;
+            width: 100%;
+        }
+        #map_container button {
+            flex: 0 0 140px;
+            font-weight: 700;
+        }
         input[type="text"],
         input[type="file"],
         button {
             width: 100%;
+            font-size: inherit;
+        }
+        select {
+            font-size: inherit;
         }
         .error-message {
             color: red;
@@ -89,8 +129,8 @@
         .hidden {
             display: none;
         }
-        .data-filenames {
-            font-size: 12px;
+        #map_container.hidden {
+            display: none;
         }
         #proteotypic_container input[type="checkbox"] {
             flex: 0;
@@ -102,6 +142,81 @@
             margin-left: 0;
             margin-right: auto;
         }
+        .feature-panel {
+            display: none;
+        }
+        #search_container {
+            flex-wrap: wrap;
+        }
+        #search_container label {
+            flex: 0 0 40%;
+            text-align: right;
+        }
+        .search-controls {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex: 1 1 0;
+            min-width: 0;
+            width: 100%;
+        }
+        .search-controls input {
+            flex: 1;
+            min-width: 312px;
+            font-size: 14px;
+            padding: 2px 6px;
+        }
+        .search-controls button {
+            width: auto;
+            white-space: nowrap;
+        }
+        .gene-list {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+            margin: 6px 0 0 40%;
+            font-size: 12px;
+            flex-basis: 60%;
+            justify-content: center;
+        }
+        .gene-item {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            background: #e9e9e9;
+            border: 1px solid #d2d2d2;
+            border-radius: 14px;
+            padding: 2px 6px 2px 10px;
+        }
+        .gene-item input {
+            border: none;
+            background: transparent;
+            width: 120px;
+        }
+        .gene-item input:focus {
+            outline: none;
+        }
+        .gene-actions {
+            display: inline-flex;
+            gap: 4px;
+        }
+        .gene-action-btn {
+            border: none;
+            background: transparent;
+            cursor: pointer;
+            padding: 2px;
+            color: #555;
+        }
+        .gene-action-btn:hover {
+            color: #111;
+        }
+        .search-actions {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin: 6px 0 0 40%;
+            flex-basis: 60%;
+        }
     </style>
 </head>
 <body>
@@ -109,64 +224,66 @@
     <div class="form-container">
         <form>
             <div class="form-group">
-                <label for="report_file">Report file:</label>
+                <label for="report_file">Report file</label>
                 <input type="file" id="report_file" name="report_file">
-                <span id="report_filename" class="hidden data-filenames"></span>
+                <span id="report_filename" class="hidden"></span>
             </div>
             <div class="form-group">
-                <label for="fasta_file">FASTA Database:</label>
+                <label for="fasta_file">FASTA Database</label>
                 <input type="file" id="fasta_file" name="fasta_file">
-                <span id="fasta_filename" class="hidden data-filenames"></span>
+                <span id="fasta_filename" class="hidden"></span>
             </div>
             <div class="form-group">
-                <label for="organism">Organism:</label>
+                <label for="organism">Organism</label>
                 <select id="organism" name="organism">
                     <option value="HUMAN">Human</option>
                     <option value="MOUSE">Mouse</option>
                 </select>
             </div>
             <div class="form-group">
-                <label for="custom_features_file">Custom features:</label>
+                <label for="custom_features_file">Custom features</label>
                 <input type="file" id="custom_features_file" name="custom_features_file" accept=".tsv,.txt,text/tab-separated-values">
-                <span id="custom_features_filename" class="hidden data-filenames"></span>
+                <span id="custom_features_filename" class="hidden"></span>
             </div>
             <div class="form-group hidden" id="custom_features_label_container">
-                <label for="custom_features_label">Custom label:</label>
+                <label for="custom_features_label">Custom label</label>
                 <input type="text" id="custom_features_label" name="custom_features_label" placeholder="e.g. Antibody Epitopes">
             </div>
             <div class="form-group" id="proteotypic_container">
-                <label for="proteotypic_checkbox">Proteotypic:</label>
+                <label for="proteotypic_checkbox">Proteotypic</label>
                 <input type="checkbox" id="proteotypic_checkbox" name="proteotypic_checkbox">
             </div>
             <div class="form-group" id="sample_name_container">
-                <label for="sample_name_cleanup">Sample name:</label>
+                <label for="sample_name_cleanup">Sample name</label>
                 <select id="sample_name_cleanup" name="sample_name_cleanup">
                     <option value="none">Keep as-is</option>
-                    <option value="strip_evosep">Remove EvoSep position</option>
+                    <option value="split_underscore">Split by first underscore</option>
                     <option value="custom">Custom split</option>
                 </select>
             </div>
             <div class="form-group hidden" id="sample_name_custom_container">
-                <label for="sample_name_custom_pattern">Split pattern:</label>
+                <label for="sample_name_custom_pattern">Split pattern</label>
                 <input type="text" id="sample_name_custom_pattern" name="sample_name_custom_pattern" placeholder="e.g. _ or -">
             </div>
-            <div class="form-group">
+            <div class="form-group action-buttons">
                 <button type="button" id="upload_button">Upload Files</button>
                 <button type="button" id="new_report_button" class="hidden">New Report</button>
             </div>
             <div class="form-group hidden" id="search_container">
-                <label for="search_input">Gene name:</label>
-                <input type="text" id="search_input" name="search_input" placeholder="Gene name or UniProt ID" list="gene_suggestions">
-                <datalist id="gene_suggestions"></datalist>
-                <button type="button" id="submit_button">Map Peptides</button>
-                <button type="button" id="edit_title_button" title="Edit title">
-                    <i class="fa-solid fa-pen"></i>
-                </button>
+                <label for="gene_entry_input">Gene name(s)</label>
+                <div class="search-controls">
+                    <input type="text" id="gene_entry_input" placeholder="Gene name or UniProt ID" list="gene_suggestions">
+                    <datalist id="gene_suggestions"></datalist>
+                    <button type="button" id="add_gene_button" title="Add">
+                        <i class="fa-solid fa-plus"></i>
+                    </button>
+                </div>
+                <div id="gene_list" class="gene-list"></div>
+                <input type="hidden" id="search_input" name="search_input">
+                <input type="hidden" id="search_labels" name="search_labels">
             </div>
-            <div class="form-group hidden" id="custom_title_container">
-                <label for="custom_title_input">Plot title:</label>
-                <input type="text" id="custom_title_input" name="custom_title_input" placeholder="Custom gene name (display only)">
-                <button type="button" id="clear_title_button">Reset title</button>
+            <div class="form-group hidden" id="map_container">
+                <button type="button" id="submit_button">Map Peptides</button>
             </div>
             <div class="form-group hidden" id="stats_container">
                 <button type="button" id="show_all_stats_button">Show all stats</button>
@@ -181,6 +298,8 @@
 
     <div id="peptides_plot"><div class="loader"></div></div>
     <div id="features_plot"><div class="loader"></div></div>
+
+    <div id="peptides_table"></div>
 
     <script>
         let sessionTime = 1800;
@@ -224,10 +343,13 @@
                 document.getElementById('custom_features_label_container').classList.remove('hidden');
             } else {
                 document.getElementById('custom_features_label_container').classList.add('hidden');
+                document.getElementById('custom_features_file').value = '';
+                document.getElementById('custom_features_file').disabled = true;
             }
 
             document.getElementById('upload_button').classList.add('hidden');
             document.getElementById('search_container').classList.remove('hidden');
+            document.getElementById('map_container').classList.remove('hidden');
             document.getElementById('new_report_button').classList.remove('hidden');
             document.getElementById('timer').classList.remove('hidden');
             resetTimer();
@@ -274,22 +396,158 @@
             clearTimeout(timeoutInterval);
         }
 
+        let geneEntries = [];
+
+        function parseGeneEntries(value) {
+            if (!value) {
+                return [];
+            }
+            return value.split(/[\s,;]+/).map(token => token.trim()).filter(Boolean);
+        }
+
+        function updateHiddenSearchInput() {
+            $('#search_input').val(geneEntries.map(entry => entry.query).join(' '));
+            $('#search_labels').val(JSON.stringify(geneEntries.map(entry => entry.label)));
+        }
+
+        function renderGeneList() {
+            const container = $('#gene_list');
+            container.empty();
+            geneEntries.forEach((entry, index) => {
+                const row = $('<div class="gene-item"></div>');
+                const input = $('<input type="text">').val(entry.label).prop('disabled', true).attr('title', entry.query);
+                const actions = $('<div class="gene-actions"></div>');
+                const edit = $('<button type="button" class="gene-action-btn" title="Edit"><i class="fa-solid fa-pen"></i></button>');
+                const remove = $('<button type="button" class="gene-action-btn" title="Remove"><i class="fa-solid fa-trash"></i></button>');
+
+                edit.on('click', function() {
+                    const isDisabled = input.prop('disabled');
+                    input.prop('disabled', !isDisabled);
+                    if (!isDisabled) {
+                        const value = input.val().trim();
+                        if (!value) {
+                            geneEntries.splice(index, 1);
+                            renderGeneList();
+                            return;
+                        }
+                        geneEntries[index].label = value;
+                        geneEntries[index].locked = true;
+                        renderGeneList();
+                    } else {
+                        input.focus();
+                    }
+                });
+
+                input.on('keydown', function(event) {
+                    if (event.key === 'Enter') {
+                        event.preventDefault();
+                        if (!input.prop('disabled')) {
+                            edit.click();
+                        }
+                    }
+                });
+
+                remove.on('click', function() {
+                    geneEntries.splice(index, 1);
+                    renderGeneList();
+                });
+
+                actions.append(edit, remove);
+                row.append(input, actions);
+                container.append(row);
+            });
+            updateHiddenSearchInput();
+        }
+
+        function dedupeGeneEntries() {
+            const seen = new Set();
+            geneEntries = geneEntries.filter(entry => {
+                const key = entry.query.toUpperCase();
+                if (seen.has(key)) {
+                    return false;
+                }
+                seen.add(key);
+                return true;
+            });
+            renderGeneList();
+        }
+
+        async function resolveGeneEntries(startIndex) {
+            if (!sessionId || startIndex >= geneEntries.length) {
+                return;
+            }
+            const identifiers = geneEntries.slice(startIndex).map(entry => entry.query);
+            if (!identifiers.length) {
+                return;
+            }
+            const response = await fetch('/resolve_labels', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ session_id: sessionId, identifiers: identifiers })
+            });
+            if (!response.ok) {
+                return;
+            }
+            const data = await response.json();
+            const resolved = data.resolved || [];
+            resolved.forEach((item, offset) => {
+                const index = startIndex + offset;
+                if (!geneEntries[index]) {
+                    return;
+                }
+                if (item.uniprot_id) {
+                    geneEntries[index].query = item.uniprot_id;
+                }
+                if (!geneEntries[index].locked && item.label) {
+                    geneEntries[index].label = item.label;
+                }
+            });
+            renderGeneList();
+        }
+
+        function addGeneEntries(entries) {
+            if (!entries.length) {
+                return;
+            }
+            const existing = new Set(geneEntries.map(entry => entry.query.toUpperCase()));
+            const startIndex = geneEntries.length;
+            entries.forEach(entry => {
+                const key = entry.toUpperCase();
+                if (!existing.has(key)) {
+                    geneEntries.push({ query: entry, label: entry, locked: false });
+                    existing.add(key);
+                }
+            });
+            renderGeneList();
+            resolveGeneEntries(startIndex);
+        }
+
+        function addGeneFromInput() {
+            const value = $('#gene_entry_input').val();
+            const entries = parseGeneEntries(value);
+            addGeneEntries(entries);
+            $('#gene_entry_input').val('');
+        }
+
         function resetFormState() {
             const form = document.querySelector('form');
             if (form) {
                 form.reset();
             }
             $('#gene_suggestions').empty();
-            $('#custom_title_container').addClass('hidden');
             $('#sample_name_custom_container').addClass('hidden');
             $('#stats_container').addClass('hidden');
             $('#custom_features_filename').addClass('hidden').text('');
-            $('#custom_features_file').removeClass('hidden').val('');
+            $('#custom_features_file').removeClass('hidden').val('').prop('disabled', false);
             $('#custom_features_label').prop('disabled', false).val('');
             $('#custom_features_label_container').addClass('hidden');
+            $('#map_container').addClass('hidden');
             hasCustomFeatures = false;
             customFeaturesLabel = '';
             sessionId = null;
+            geneEntries = [];
+            $('#gene_entry_input').val('');
+            renderGeneList();
         }
 
         window.onload = function () {
@@ -313,6 +571,7 @@
                     })
                     .then(data => {
                         applySessionData(data);
+                        resolveGeneEntries(0);
                     })
                     .catch(error => {
                         console.error('Session load error:', error);
@@ -321,10 +580,10 @@
             }
         };
 
-        document.getElementById('search_input').addEventListener('keypress', function(event) {
+        document.getElementById('gene_entry_input').addEventListener('keypress', function(event) {
             if (event.key === 'Enter') {
                 event.preventDefault();
-                document.getElementById('submit_button').click();
+                addGeneFromInput();
             }
         });
 
@@ -363,6 +622,7 @@
                   document.getElementById('organism').disabled = true;
                   uploadButton.classList.add('hidden');
                   document.getElementById('search_container').classList.remove('hidden');
+                  document.getElementById('map_container').classList.remove('hidden');
                   document.getElementById('new_report_button').classList.remove('hidden');
                   document.getElementById('timer').classList.remove('hidden');
                   resetTimer();
@@ -377,7 +637,10 @@
                       document.getElementById('custom_features_label_container').classList.remove('hidden');
                   } else {
                       document.getElementById('custom_features_label_container').classList.add('hidden');
+                      document.getElementById('custom_features_file').value = '';
+                      document.getElementById('custom_features_file').disabled = true;
                   }
+                  resolveGeneEntries(0);
               })
               .catch(error => {
                   console.error('Error:', error);
@@ -402,6 +665,7 @@
                 document.getElementById('fasta_file').classList.remove('hidden');
                 document.getElementById('custom_features_file').classList.remove('hidden');
                 document.getElementById('custom_features_file').value = '';
+                document.getElementById('custom_features_file').disabled = false;
                 document.getElementById('organism').disabled = false;
                 document.getElementById('upload_button').classList.remove('hidden');
                 document.getElementById('report_filename').classList.add('hidden');
@@ -411,6 +675,7 @@
                 document.getElementById('custom_features_label').value = '';
                 document.getElementById('custom_features_label_container').classList.add('hidden');
                 document.getElementById('search_container').classList.add('hidden');
+                document.getElementById('map_container').classList.add('hidden');
                 document.getElementById('new_report_button').classList.add('hidden');
                 document.getElementById('peptides_plot').style.display = 'none';
                 document.getElementById('features_plot').style.display = 'none';
@@ -435,16 +700,21 @@
 
         function fetchPlots() {
             $('#peptides_plot, #features_plot').show().html('<div class="loader"></div>');
+            $('#peptides_table').empty();
+            if (!geneEntries.length && $('#gene_entry_input').val().trim()) {
+                addGeneFromInput();
+            }
 
             let formData = new FormData();
             if (sessionId) {
                 formData.append('session_id', sessionId);
             }
             formData.append('search_input', $('#search_input').val());
+            formData.append('search_labels', $('#search_labels').val());
             formData.append('proteotypic_checkbox', $('#proteotypic_checkbox').is(':checked'));
             formData.append('sample_name_cleanup', $('#sample_name_cleanup').val());
             formData.append('sample_name_custom_pattern', $('#sample_name_custom_pattern').val());
-            formData.append('custom_title', $('#custom_title_input').val());
+            formData.append('custom_title', '');
 
             $.ajax({
                 url: '/plot_peptides',
@@ -455,11 +725,13 @@
                 success: function(data) {
                     $('#peptides_plot').html(data);
                     applyCrispEdges();
-                    var peptidePlotDiv = document.getElementById('peptides_plot').getElementsByClassName('js-plotly-plot')[0];
-                    if (peptidePlotDiv) {
-                        setupPersistentHover(peptidePlotDiv);
+                    var peptidePlotDivs = document.getElementById('peptides_plot').getElementsByClassName('js-plotly-plot');
+                    if (peptidePlotDivs.length > 0) {
+                        Array.from(peptidePlotDivs).forEach(div => setupPersistentHover(div));
                         document.getElementById('stats_container').classList.remove('hidden');
                     }
+                    syncPlotTabs();
+                    moveSummaryToTable(10);
                 },
                 error: function(xhr) {
                     let errorMsg = 'Failed to load peptides plot.';
@@ -482,10 +754,12 @@
                 processData: false,
                 success: function(data) {
                     $('#features_plot').html(data);
-                    const featurePlotDiv = document.getElementById('features_plot').getElementsByClassName('js-plotly-plot')[0];
-                    if (featurePlotDiv) {
-                        setupPersistentHover(featurePlotDiv);
+                    const featurePlotDivs = document.getElementById('features_plot').getElementsByClassName('js-plotly-plot');
+                    if (featurePlotDivs.length > 0) {
+                        Array.from(featurePlotDivs).forEach(div => setupPersistentHover(div));
                     }
+                    syncPlotTabs();
+                    moveSummaryToTable(10);
                 },
                 error: function(xhr) {
                     let errorMsg = 'Failed to load features plot.';
@@ -603,7 +877,13 @@
             if (!peptidesPlot) {
                 return null;
             }
-            return peptidesPlot.getElementsByClassName('js-plotly-plot')[0];
+            const plotDivs = peptidesPlot.getElementsByClassName('js-plotly-plot');
+            for (let i = 0; i < plotDivs.length; i++) {
+                if (plotDivs[i].offsetParent !== null) {
+                    return plotDivs[i];
+                }
+            }
+            return plotDivs[0] || null;
         }
 
         function collectPlotPoints(plotDiv) {
@@ -669,6 +949,76 @@
             });
         }
 
+        function resizeVisiblePlots() {
+            if (!window.Plotly) {
+                return;
+            }
+            const containers = ['peptides_plot', 'features_plot'];
+            containers.forEach(id => {
+                const container = document.getElementById(id);
+                if (!container) {
+                    return;
+                }
+                const plotDivs = container.getElementsByClassName('js-plotly-plot');
+                Array.from(plotDivs).forEach(div => {
+                    if (div.offsetParent !== null) {
+                        Plotly.Plots.resize(div);
+                    }
+                });
+            });
+        }
+
+        function updateFeatureVisibility() {
+            const peptideTabs = document.getElementById('pepmap-peptides-tabs');
+            const featuresPlot = document.getElementById('features_plot');
+            if (!featuresPlot) {
+                return;
+            }
+            const panels = featuresPlot.querySelectorAll('.feature-panel');
+            if (!peptideTabs || panels.length === 0) {
+                panels.forEach(panel => { panel.style.display = 'block'; });
+                return;
+            }
+            const activeInput = peptideTabs.querySelector('input[type="radio"]:checked');
+            const activeIndex = activeInput ? activeInput.getAttribute('data-index') : null;
+            panels.forEach(panel => {
+                const panelIndex = panel.getAttribute('data-index');
+                panel.style.display = panelIndex === activeIndex ? 'block' : 'none';
+            });
+        }
+
+        function syncPlotTabs() {
+            const peptideTabs = document.getElementById('pepmap-peptides-tabs');
+            if (!peptideTabs) {
+                updateFeatureVisibility();
+                return;
+            }
+            const peptideInputs = peptideTabs.querySelectorAll('input[type="radio"]');
+            peptideInputs.forEach(input => {
+                input.addEventListener('change', function() {
+                    updateFeatureVisibility();
+                    resizeVisiblePlots();
+                });
+            });
+            updateFeatureVisibility();
+            resizeVisiblePlots();
+        }
+
+        function moveSummaryToTable(attemptsLeft) {
+            const summary = document.querySelector('#peptides_plot .peptide-summary');
+            const target = document.getElementById('peptides_table');
+            if (!summary || !target) {
+                if (attemptsLeft > 0) {
+                    setTimeout(function() {
+                        moveSummaryToTable(attemptsLeft - 1);
+                    }, 100);
+                }
+                return;
+            }
+            target.innerHTML = '';
+            target.appendChild(summary);
+        }
+
         $(document).ready(function() {
             $('#submit_button').click(function(e) {
                 e.preventDefault();
@@ -676,21 +1026,14 @@
                 resetTimer();
             });
 
-            $('#edit_title_button').click(function(e) {
+            $('#add_gene_button').click(function(e) {
                 e.preventDefault();
-                $('#custom_title_container').toggleClass('hidden');
-                if (!$('#custom_title_container').hasClass('hidden')) {
-                    $('#custom_title_input').focus();
-                }
+                addGeneFromInput();
             });
 
-            $('#clear_title_button').click(function(e) {
-                e.preventDefault();
-                $('#custom_title_input').val('');
-            });
-
-            $('#search_input').on('input', function() {
-                const query = $(this).val().trim();
+            $('#gene_entry_input').on('input', function() {
+                const tokens = parseGeneEntries($(this).val());
+                const query = tokens.length ? tokens[tokens.length - 1] : '';
                 if (!query) {
                     $('#gene_suggestions').empty();
                     return;

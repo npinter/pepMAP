@@ -277,6 +277,41 @@ def normalize_search_input(search_input):
     return search_input.strip()
 
 
+def parse_search_inputs(search_input):
+    if search_input is None:
+        return []
+    tokens = [token.strip() for token in re.split(r'[\s,;]+', search_input) if token.strip()]
+    seen = set()
+    results = []
+    for token in tokens:
+        key = token.upper()
+        if key in seen:
+            continue
+        seen.add(key)
+        results.append(token)
+    return results
+
+
+def parse_search_labels(raw_labels, expected_count):
+    if not raw_labels:
+        return [''] * expected_count
+    try:
+        labels = json.loads(raw_labels)
+    except Exception:
+        return [''] * expected_count
+    if not isinstance(labels, list):
+        return [''] * expected_count
+    normalized = []
+    for value in labels:
+        label = ''
+        if isinstance(value, str):
+            label = value.strip()
+        normalized.append(label)
+    if len(normalized) < expected_count:
+        normalized.extend([''] * (expected_count - len(normalized)))
+    return normalized[:expected_count]
+
+
 def normalize_organism(organism):
     if organism is None:
         return None
@@ -284,6 +319,40 @@ def normalize_organism(organism):
     if organism_value in {'HUMAN', 'MOUSE'}:
         return organism_value
     return None
+
+
+@app.route('/resolve_labels', methods=['POST'])
+def resolve_labels():
+    payload = request.get_json(silent=True) or {}
+    session_id = normalize_session_id(payload.get('session_id'))
+    if not session_id:
+        return jsonify({'error': 'session_id is required.'}), 400
+    identifiers = payload.get('identifiers') or []
+    if not isinstance(identifiers, list):
+        return jsonify({'error': 'identifiers must be a list.'}), 400
+
+    fasta_data = store.read(session_id, 'fasta_data')
+    if not fasta_data:
+        return jsonify({'error': 'Session does not contain FASTA data.'}), 400
+    fasta_df = pd.read_json(StringIO(fasta_data))
+
+    resolved = []
+    for raw in identifiers:
+        token = normalize_search_input(raw)
+        if not token:
+            resolved.append({'input': raw, 'uniprot_id': None, 'label': '', 'found': False})
+            continue
+        uniprot_id = find_uniprot_id_by_accession(fasta_df, token)
+        if uniprot_id is None:
+            uniprot_id = find_uniprot_id_by_gene_symbol(fasta_df, token)
+        if uniprot_id is None:
+            resolved.append({'input': token, 'uniprot_id': token, 'label': token, 'found': False})
+            continue
+        gene_symbol = fasta_df.loc[fasta_df['uniprot_id'] == uniprot_id, 'gene_symbol'].iloc[0]
+        label = gene_symbol if isinstance(gene_symbol, str) and gene_symbol.strip() else token
+        resolved.append({'input': token, 'uniprot_id': uniprot_id, 'label': label, 'found': True})
+
+    return jsonify({'resolved': resolved}), 200
 
 
 def find_uniprot_id_by_gene_symbol(fasta_df, gene_symbol):
@@ -305,11 +374,11 @@ def find_uniprot_id_by_accession(fasta_df, accession):
 
 
 def apply_sample_name_cleanup(report_df, cleanup_mode, custom_split_pattern):
-    if cleanup_mode not in {'strip_evosep', 'custom'}:
+    if cleanup_mode not in {'split_underscore', 'custom'}:
         return report_df
 
     cleaned_df = report_df.copy()
-    if cleanup_mode == 'strip_evosep':
+    if cleanup_mode == 'split_underscore':
         cleaned_df['Run'] = cleaned_df['Run'].astype(str).apply(
             lambda value: value.split('_', 1)[0]
         )
@@ -813,6 +882,76 @@ def plot_features(fasta_df, selected_protein_id, custom_features_df=None, custom
     return pio.to_html(fig, full_html=False, config=config)
 
 
+def render_tabs(tab_id, items):
+    tab_rules = []
+    for idx in range(len(items)):
+        input_id = f"{tab_id}-tab-{idx}"
+        panel_id = f"{tab_id}-panel-{idx}"
+        tab_rules.append(f"#{tab_id} #{input_id}:checked ~ .tab-panels #{panel_id}{{display:block;}}")
+    tab_style = (
+        "<style>"
+        f"#{tab_id}{{margin-top:8px;}}"
+        f"#{tab_id} input[type=radio]{{display:none;}}"
+        f"#{tab_id} .tab-label{{display:inline-block;padding:6px 10px;border:1px solid #ccc;"
+        "border-radius:4px;background:#f3f3f3;cursor:pointer;font-size:12px;margin:0 6px 6px 0;}}"
+        f"#{tab_id} input[type=radio]:checked + .tab-label{{background:#e7e7e7;font-weight:600;}}"
+        f"#{tab_id} .tab-panels{{border:none;border-radius:0;padding:6px;background:#fff;}}"
+        f"#{tab_id} .tab-panel{{display:none;}}"
+        + "".join(tab_rules) +
+        "</style>"
+    )
+    parts = [tab_style, f'<div class="pepmap-tabs" id="{tab_id}">']
+    for idx, item in enumerate(items):
+        safe_label = item['label']
+        input_id = f"{tab_id}-tab-{idx}"
+        checked = ' checked' if idx == 0 else ''
+        parts.append(
+            f'<input type="radio" name="{tab_id}-tabs" id="{input_id}" data-index="{idx}"{checked}>'
+        )
+        parts.append(f'<label class="tab-label" for="{input_id}">{safe_label}</label>')
+    parts.append('<div class="tab-panels">')
+    for idx, item in enumerate(items):
+        panel_id = f"{tab_id}-panel-{idx}"
+        parts.append(f'<div class="tab-panel" id="{panel_id}">{item["content"]}</div>')
+    parts.append('</div></div>')
+    return ''.join(parts)
+
+
+def build_peptide_summary_table(counts_by_protein, all_runs, column_order=None):
+    if not counts_by_protein:
+        return ''
+    all_runs = list(all_runs or [])
+    if not all_runs:
+        return ''
+    summary_df = pd.DataFrame(index=all_runs)
+    if column_order:
+        ordered_labels = [label for label in column_order if label in counts_by_protein]
+        remaining = [label for label in counts_by_protein.keys() if label not in ordered_labels]
+        label_iter = ordered_labels + remaining
+    else:
+        label_iter = counts_by_protein.keys()
+    for label in label_iter:
+        counts = counts_by_protein.get(label, {})
+        summary_df[label] = [counts.get(run, 0) for run in all_runs]
+    summary_df['Total'] = summary_df.sum(axis=1)
+    summary_df.index.name = ''
+    summary_df = summary_df.fillna(0).astype(int)
+    table_html = summary_df.to_html(classes='peptide-summary-table', border=1, index_names=False)
+    return (
+        "<style>"
+        ".peptide-summary{margin-top:12px;font-size:12px;text-align:left;}"
+        ".peptide-summary-title{font-weight:600;margin-bottom:6px;text-align:center;}"
+        ".peptide-summary-table{border-collapse:collapse;width:90%;margin:0 auto;}"
+        ".peptide-summary-table th,.peptide-summary-table td{border:1px solid #ddd;padding:4px 6px;text-align:left;}"
+        ".peptide-summary-table th{background:#f5f5f5;}"
+        "</style>"
+        '<div class="peptide-summary">'
+        '<div class="peptide-summary-title">Peptides per sample</div>'
+        f'{table_html}'
+        '</div>'
+    )
+
+
 def find_peptide_positions(report_df, fasta_df, selected_protein_id, proteotypic_only, p_value_column):
     try:
         protein_sequence = fasta_df.loc[fasta_df['uniprot_id'] == selected_protein_id, 'sequence'].iloc[0]
@@ -914,28 +1053,87 @@ def plot_peptides_route():
     global_log2_min = report_df[np.isfinite(report_df['log2_intensity'])]['log2_intensity'].min()
     global_log2_max = report_df['log2_intensity'].max()
 
-    selected_protein_id = find_uniprot_id_by_gene_symbol(fasta_df, search_input)
-    if selected_protein_id is None:
-        selected_protein_id = find_uniprot_id_by_accession(fasta_df, search_input)
-    if selected_protein_id is None:
-        return jsonify({'error': 'No protein found for the given search input.'}), 400
+    search_inputs = parse_search_inputs(search_input)
+    if not search_inputs:
+        return jsonify({'error': 'No valid search input provided.'}), 400
+    search_labels = parse_search_labels(request.form.get('search_labels'), len(search_inputs))
+    is_multi = len(search_inputs) > 1
 
     try:
-        # find peptide positions
-        peptide_positions_df = find_peptide_positions(report_df, fasta_df, selected_protein_id, proteotypic_only, p_value_column)
-        if peptide_positions_df.empty:
-            return jsonify({'error': 'No peptide positions found.'}), 400
+        tab_items = []
+        counts_by_protein = {}
+        table_labels = []
+        for idx, token in enumerate(search_inputs):
+            label_override = search_labels[idx] if idx < len(search_labels) else ''
+            table_label = label_override or token
+            table_labels.append(table_label)
+            counts_by_protein.setdefault(table_label, {})
+            selected_protein_id = find_uniprot_id_by_gene_symbol(fasta_df, token)
+            if selected_protein_id is None:
+                selected_protein_id = find_uniprot_id_by_accession(fasta_df, token)
+            if selected_protein_id is None:
+                if not is_multi:
+                    return jsonify({'error': 'No protein found for the given search input.'}), 400
+                tab_items.append({
+                    'label': table_label,
+                    'content': f'<div class="error-message">No protein found for {table_label}.</div>'
+                })
+                continue
 
-        return plot_peptides(
-            peptide_positions_df,
-            fasta_df,
-            selected_protein_id,
-            global_log2_min,
-            global_log2_max,
-            p_value_column,
-            p_value_name,
-            custom_title
-        )
+            try:
+                peptide_positions_df = find_peptide_positions(
+                    report_df, fasta_df, selected_protein_id, proteotypic_only, p_value_column
+                )
+            except Exception as e:
+                if not is_multi:
+                    return jsonify({'error': str(e)}), 400
+                tab_items.append({
+                    'label': table_label,
+                    'content': f'<div class="error-message">{str(e)}</div>'
+                })
+                continue
+
+            if peptide_positions_df.empty:
+                message = f'No peptide positions found for {label_override or selected_protein_id}.'
+                if not is_multi:
+                    return jsonify({'error': message}), 400
+                tab_items.append({
+                    'label': table_label,
+                    'content': f'<div class="error-message">{message}</div>'
+                })
+                continue
+
+            if is_multi:
+                plot_title = label_override or display_label
+            else:
+                plot_title = label_override or custom_title
+            plot_html = plot_peptides(
+                peptide_positions_df,
+                fasta_df,
+                selected_protein_id,
+                global_log2_min,
+                global_log2_max,
+                p_value_column,
+                p_value_name,
+                plot_title
+            )
+            protein_label = fasta_df.loc[fasta_df['uniprot_id'] == selected_protein_id, 'gene_symbol'].iloc[0]
+            display_label = protein_label if isinstance(protein_label, str) and protein_label.strip() else selected_protein_id
+            display_label = label_override or display_label
+            tab_items.append({
+                'label': display_label,
+                'content': plot_html
+            })
+            unique_peptides = peptide_positions_df.drop_duplicates(subset=['Run', 'Peptide'])
+            counts_by_protein[table_label] = unique_peptides.groupby('Run')['Peptide'].size().to_dict()
+
+        if is_multi:
+            tabs_html = render_tabs('pepmap-peptides-tabs', tab_items)
+            all_runs = sorted(report_df['Run'].astype(str).unique())
+            summary_html = build_peptide_summary_table(counts_by_protein, all_runs, column_order=table_labels)
+            return f'{tabs_html}{summary_html}'
+
+        return tab_items[0]['content']
 
     except Exception as e:
         return jsonify({'error': str(e)}), 400
@@ -960,15 +1158,49 @@ def plot_features_route():
     custom_features_data = store.read(session_id, 'custom_features_data')
     if custom_features_data:
         custom_features_df = pd.read_json(StringIO(custom_features_data))
-        custom_features_label = store.read(session_id, 'custom_features_label')
-    selected_protein_id = find_uniprot_id_by_gene_symbol(fasta_df, search_input)
-    if selected_protein_id is None:
-        selected_protein_id = find_uniprot_id_by_accession(fasta_df, search_input)
-    if selected_protein_id is None:
-        return jsonify({'error': 'No protein found for the given search input.'}), 400
+        custom_features_label = store.read(session_id, 'custom_features_label') or 'Custom Features'
+
+    search_inputs = parse_search_inputs(search_input)
+    if not search_inputs:
+        return jsonify({'error': 'No valid search input provided.'}), 400
+    is_multi = len(search_inputs) > 1
 
     try:
-        return plot_features(fasta_df, selected_protein_id, custom_features_df, custom_features_label)
+        feature_panels = []
+        for idx, token in enumerate(search_inputs):
+            selected_protein_id = find_uniprot_id_by_gene_symbol(fasta_df, token)
+            if selected_protein_id is None:
+                selected_protein_id = find_uniprot_id_by_accession(fasta_df, token)
+            if selected_protein_id is None:
+                if not is_multi:
+                    return jsonify({'error': 'No protein found for the given search input.'}), 400
+                feature_panels.append(
+                    f'<div class="feature-panel" data-index="{idx}">'
+                    f'<div class="error-message">No protein found for {token}.</div>'
+                    '</div>'
+                )
+                continue
+
+            features_html = plot_features(fasta_df, selected_protein_id, custom_features_df, custom_features_label)
+            if isinstance(features_html, tuple):
+                message = features_html[0].json.get('error', 'Failed to load features plot.')
+                if not is_multi:
+                    return jsonify({'error': message}), 400
+                feature_panels.append(
+                    f'<div class="feature-panel" data-index="{idx}">'
+                    f'<div class="error-message">{message}</div>'
+                    '</div>'
+                )
+                continue
+
+            feature_panels.append(
+                f'<div class="feature-panel" data-index="{idx}">{features_html}</div>'
+            )
+
+        if is_multi:
+            return ''.join(feature_panels)
+
+        return feature_panels[0]
 
     except Exception as e:
         return jsonify({'error': str(e)}), 400
