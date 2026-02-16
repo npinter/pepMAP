@@ -1,0 +1,14 @@
+{% extends "layout.html" %}
+
+{% block content %}
+<div class="mx-auto max-w-4xl">
+    <header class="mb-8 text-center">
+        <h1 class="text-4xl font-semibold tracking-tight text-slate-900">pepMAP</h1>
+        <p class="mt-2 text-sm text-slate-500">Peptide mapping for DIA-NN, FragPipe, MaxQuant, and Spectronaut reports</p>
+    </header>
+
+    {% include "components/upload_form.html" %}
+</div>
+
+{% include "components/plots.html" %}
+{% endblock %}

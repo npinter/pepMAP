@@ -1,0 +1,193 @@
+<section class="relative rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+    <form id="main_form" class="space-y-8">
+        <div>
+            <div class="mb-4">
+                <h2 class="text-sm font-semibold uppercase tracking-wide text-slate-900">Inputs</h2>
+                <p class="mt-1 text-xs text-slate-500">Upload the report and FASTA to start a session</p>
+            </div>
+            <div class="space-y-3">
+                <div class="grid grid-cols-1 gap-y-2 sm:grid-cols-[12rem_1fr] sm:items-center sm:gap-x-6">
+                    <label for="report_file" class="text-sm font-semibold text-slate-700">Report file</label>
+                    <div>
+                        <input type="file" id="report_file" name="report_file" class="h-10 w-full rounded-md border border-slate-300 px-3 text-sm focus:border-slate-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 focus-visible:ring-offset-2 file:mr-3 file:h-[30px] file:my-[4px] file:rounded-md file:border-0 file:bg-slate-200 file:px-3 file:py-0 file:text-sm file:font-semibold file:text-slate-700 hover:file:bg-slate-300">
+                        <input type="text" id="report_filename" aria-label="Report file name" class="mt-2 hidden h-10 w-full rounded-md border border-slate-300 bg-slate-50 px-3 text-sm text-slate-600 disabled:cursor-not-allowed" disabled>
+                    </div>
+                </div>
+                <div class="grid grid-cols-1 gap-y-2 sm:grid-cols-[12rem_1fr] sm:items-center sm:gap-x-6">
+                    <label for="fasta_file" class="text-sm font-semibold text-slate-700">FASTA database</label>
+                    <div>
+                        <input type="file" id="fasta_file" name="fasta_file" class="h-10 w-full rounded-md border border-slate-300 px-3 text-sm focus:border-slate-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 focus-visible:ring-offset-2 file:mr-3 file:h-[30px] file:my-[4px] file:rounded-md file:border-0 file:bg-slate-200 file:px-3 file:py-0 file:text-sm file:font-semibold file:text-slate-700 hover:file:bg-slate-300">
+                        <input type="text" id="fasta_filename" aria-label="FASTA file name" class="mt-2 hidden h-10 w-full rounded-md border border-slate-300 bg-slate-50 px-3 text-sm text-slate-600 disabled:cursor-not-allowed" disabled>
+                    </div>
+                </div>
+                <div class="grid grid-cols-1 gap-y-2 sm:grid-cols-[12rem_1fr] sm:items-center sm:gap-x-6">
+                    <label for="organism" class="text-sm font-semibold text-slate-700">Organism</label>
+                    <div>
+                        <select id="organism" name="organism" class="h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm focus:border-slate-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 focus-visible:ring-offset-2">
+                            <option value="HUMAN">Human</option>
+                            <option value="MOUSE">Mouse</option>
+                            <option value="CUSTOM">Custom</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="hidden grid grid-cols-1 gap-y-2 sm:grid-cols-[12rem_1fr] sm:items-center sm:gap-x-6" id="custom_organism_container">
+                    <label for="custom_organism" class="text-sm font-semibold text-slate-700">Custom organism</label>
+                    <div>
+                        <input type="text" id="custom_organism" name="custom_organism" placeholder="e.g. RAT" class="h-10 w-full rounded-md border border-slate-300 px-3 text-sm focus:border-slate-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 focus-visible:ring-offset-2">
+                    </div>
+                </div>
+                <div class="grid grid-cols-1 gap-y-2 sm:grid-cols-[12rem_1fr] sm:items-center sm:gap-x-6">
+                    <label for="custom_features_file" class="text-sm font-semibold text-slate-700">Custom features</label>
+                    <div>
+                        <input type="file" id="custom_features_file" name="custom_features_file" accept=".tsv,.txt,text/tab-separated-values" class="h-10 w-full rounded-md border border-slate-300 px-3 text-sm focus:border-slate-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 focus-visible:ring-offset-2 file:mr-3 file:h-[30px] file:my-[4px] file:rounded-md file:border-0 file:bg-slate-200 file:px-3 file:py-0 file:text-sm file:font-semibold file:text-slate-700 hover:file:bg-slate-300">
+                        <input type="text" id="custom_features_filename" aria-label="Custom features file name" class="mt-2 hidden h-10 w-full rounded-md border border-slate-300 bg-slate-50 px-3 text-sm text-slate-600 disabled:cursor-not-allowed" disabled>
+                        <div id="custom_features_placeholder" class="hidden mt-2 h-10 w-full rounded-md border border-slate-200 bg-slate-50 px-3 text-sm text-slate-500 flex items-center">
+                            Custom feature file not provided
+                        </div>
+                    </div>
+                </div>
+                <div class="hidden grid grid-cols-1 gap-y-2 sm:grid-cols-[12rem_1fr] sm:items-center sm:gap-x-6" id="custom_features_label_container">
+                    <label for="custom_features_label" class="text-sm font-semibold text-slate-700">Custom label</label>
+                    <div>
+                        <input type="text" id="custom_features_label" name="custom_features_label" placeholder="e.g. Antibody epitopes" class="h-10 w-full rounded-md border border-slate-300 px-3 text-sm focus:border-slate-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 focus-visible:ring-offset-2">
+                    </div>
+                </div>
+                <div class="grid grid-cols-1 gap-y-2 sm:grid-cols-[12rem_1fr] sm:items-center sm:gap-x-6">
+                    <span class="text-sm font-semibold text-slate-700">Session</span>
+                    <div class="flex flex-wrap items-center gap-3">
+                        <button type="button" id="upload_button" class="inline-flex h-10 items-center justify-center rounded-md border border-slate-300 bg-white px-5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-slate-400 focus-visible:ring-offset-2">Upload files</button>
+                        <button type="button" id="new_report_button" class="hidden inline-flex h-10 items-center justify-center rounded-md border border-slate-300 bg-white px-5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-slate-400 focus-visible:ring-offset-2">New report</button>
+                        <div id="session_share_container" class="hidden flex items-center gap-2 rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-700 max-w-[16rem] sm:max-w-[24rem] min-w-0">
+                            <button type="button" id="session_share_link" class="truncate font-mono text-slate-700 hover:text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 focus-visible:ring-offset-2 flex-1 min-w-0"></button>
+                            <span class="text-slate-400">|</span>
+                            <button type="button" id="session_share_copy" class="text-slate-500 transition hover:text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 focus-visible:ring-offset-2" aria-label="Copy session link">
+                                <i class="fa-regular fa-copy"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                <p id="session_share_hint" class="hidden text-xs text-slate-500 sm:ml-[12rem] sm:pl-6">Click the link to copy the full URL</p>
+            </div>
+        </div>
+
+        <div id="mapping_block" class="hidden">
+            <div class="my-6 border-t border-slate-200"></div>
+
+            <div>
+                <div class="mb-4">
+                    <h2 class="text-sm font-semibold uppercase tracking-wide text-slate-900">Mapping parameters</h2>
+                    <p class="mt-1 text-xs text-slate-500">Tune peptide filtering and sample normalization</p>
+                </div>
+                <div class="space-y-3">
+                    <div class="hidden grid grid-cols-1 gap-y-2 sm:grid-cols-[12rem_1fr] sm:items-center sm:gap-x-6" id="proteotypic_container">
+                        <label for="proteotypic_checkbox" class="text-sm font-semibold text-slate-700">Proteotypic</label>
+                        <div class="space-y-1">
+                            <div class="flex items-center gap-3">
+                                <input type="checkbox" id="proteotypic_checkbox" name="proteotypic_checkbox" class="h-4 w-4 rounded border-slate-300 text-slate-900 focus-visible:ring-2 focus-visible:ring-slate-400 focus-visible:ring-offset-2">
+                                <span class="text-sm text-slate-700">Only keep proteotypic peptides</span>
+                            </div>
+                            <p class="text-xs text-slate-500">Filters peptides to those uniquely mapping to a protein</p>
+                        </div>
+                    </div>
+                    <div class="hidden grid grid-cols-1 gap-y-2 sm:grid-cols-[12rem_1fr] sm:items-center sm:gap-x-6" id="charge_state_container">
+                        <label for="charge_state_mode" class="text-sm font-semibold text-slate-700">Charge states</label>
+                        <div>
+                            <select id="charge_state_mode" name="charge_state_mode" class="h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm focus:border-slate-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 focus-visible:ring-offset-2">
+                                <option value="all">All charge states</option>
+                                <option value="unique">Unique per peptide (lowest ID error rate)</option>
+                                <option value="overlap">Collapse overlapping peptides (lowest ID error rate)</option>
+                            </select>
+                            <p class="mt-1 text-xs text-slate-500">Controls whether multiple charge states are collapsed</p>
+                        </div>
+                    </div>
+                    <div class="hidden grid grid-cols-1 gap-y-2 sm:grid-cols-[12rem_1fr] sm:items-center sm:gap-x-6" id="q_value_container">
+                        <label for="q_value_cutoff" class="text-sm font-semibold text-slate-700">ID error rate (EP)</label>
+                        <div>
+                            <select id="q_value_cutoff" name="q_value_cutoff" class="h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm focus:border-slate-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 focus-visible:ring-offset-2">
+                                <option value="0">No cutoff</option>
+                                <option value="0.05">0.05 (5% FDR)</option>
+                                <option value="0.01" selected>0.01 (1% FDR)</option>
+                                <option value="0.005">0.005 (0.5% FDR)</option>
+                                <option value="0.001">0.001 (0.1% FDR)</option>
+                            </select>
+                            <p class="mt-1 text-xs text-slate-500">Filters peptides by the EP value in the report</p>
+                        </div>
+                    </div>
+                    <div class="hidden grid grid-cols-1 gap-y-2 sm:grid-cols-[12rem_1fr] sm:items-center sm:gap-x-6" id="sample_name_container">
+                        <label for="sample_name_cleanup" class="text-sm font-semibold text-slate-700">Sample name</label>
+                        <div>
+                            <select id="sample_name_cleanup" name="sample_name_cleanup" class="h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm focus:border-slate-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 focus-visible:ring-offset-2">
+                                <option value="none">Keep as-is</option>
+                                <option value="split_underscore">Split by first underscore</option>
+                                <option value="custom">Custom regex</option>
+                            </select>
+                            <p class="mt-1 text-xs text-slate-500">Regex cleanup applies before plots and tables. If the regex has a capture group, group 1 is used.</p>
+                            <p id="sample_name_preview" class="mt-1 text-xs text-slate-500"></p>
+                        </div>
+                    </div>
+                    <div class="hidden grid grid-cols-1 gap-y-2 sm:grid-cols-[12rem_1fr] sm:items-center sm:gap-x-6" id="sample_name_custom_container">
+                        <label for="sample_name_custom_pattern" class="text-sm font-semibold text-slate-700">Regex pattern</label>
+                        <div>
+                            <input type="text" id="sample_name_custom_pattern" name="sample_name_custom_pattern" placeholder="e.g. ^([^_]+)" class="h-10 w-full rounded-md border border-slate-300 px-3 text-sm focus:border-slate-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 focus-visible:ring-offset-2">
+                            <p class="mt-1 text-xs text-slate-500">Use a regex (no /). If you include a capture group, group 1 becomes the sample name. Example: ^([^_]+)</p>
+                        </div>
+                    </div>
+                    <div class="hidden grid grid-cols-1 gap-y-2 sm:grid-cols-[12rem_1fr] sm:items-center sm:gap-x-6" id="sample_picker_container">
+                        <span class="text-sm font-semibold text-slate-700">Samples</span>
+                        <div class="space-y-2">
+                            <div class="flex flex-wrap items-center gap-2 text-xs text-slate-500">
+                                <button type="button" id="sample_select_all" class="rounded-full border border-slate-200 px-2 py-0.5 text-slate-600 transition hover:bg-slate-50">Select all</button>
+                                <button type="button" id="sample_clear_all" class="rounded-full border border-slate-200 px-2 py-0.5 text-slate-600 transition hover:bg-slate-50">Unselect all</button>
+                                <span id="sample_picker_count"></span>
+                            </div>
+                            <div id="sample_picker_list" class="max-h-40 overflow-y-auto rounded-md border border-slate-200 bg-slate-50 p-2 text-xs text-slate-700"></div>
+                            <p class="text-xs text-slate-500">Default: all samples</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="my-6 border-t border-slate-200"></div>
+        </div>
+
+        <div class="hidden" id="search_container">
+            <div class="mb-4">
+                <h2 class="text-sm font-semibold uppercase tracking-wide text-slate-900">Targets</h2>
+                <p class="mt-1 text-xs text-slate-500">Add gene symbols or UniProt IDs to map</p>
+            </div>
+            <div class="grid grid-cols-1 gap-y-2 sm:grid-cols-[12rem_1fr] sm:items-start sm:gap-x-6">
+                <label for="gene_entry_input" class="text-sm font-semibold text-slate-700">Genes</label>
+                <div class="space-y-2">
+                    <div class="flex w-full items-stretch">
+                        <input type="text" id="gene_entry_input" placeholder="Gene name or UniProt ID" list="gene_suggestions" class="h-10 flex-1 rounded-l-md border border-slate-300 px-3 text-sm focus:border-slate-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 focus-visible:ring-offset-2" aria-describedby="gene_entry_help">
+                        <datalist id="gene_suggestions"></datalist>
+                        <button type="button" id="add_gene_button" title="Add" class="inline-flex h-10 w-10 items-center justify-center rounded-r-md border border-l-0 border-slate-300 text-slate-600 transition hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-slate-400 focus-visible:ring-offset-2">
+                            <i class="fa-solid fa-plus"></i>
+                        </button>
+                    </div>
+                    <p id="gene_entry_help" class="text-xs text-slate-500">Press Enter or click + to add Suggestions appear as you type</p>
+                    <div id="gene_suggestions_status" class="text-xs text-slate-500"></div>
+                    <div id="gene_list" class="flex flex-wrap gap-2"></div>
+                    <input type="hidden" id="search_input" name="search_input">
+                    <input type="hidden" id="search_labels" name="search_labels">
+                </div>
+            </div>
+        </div>
+
+        <div class="hidden" id="map_container">
+            <div class="my-6 border-t border-slate-200"></div>
+            <div class="pt-6 text-center">
+                <button type="button" id="submit_button" class="inline-flex h-11 items-center justify-center rounded-md bg-emerald-600 px-8 text-sm font-semibold text-white shadow-sm transition hover:bg-emerald-500 focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:bg-emerald-300">Map peptides</button>
+                <p id="submit_hint" class="mt-2 text-xs text-slate-500">Add at least one gene to map peptides</p>
+            </div>
+        </div>
+
+        <div class="flex justify-center">
+            <div id="timer" class="hidden text-xs text-slate-500">Session will expire in 30:00 minutes</div>
+        </div>
+    </form>
+    <div id="report_type_badge" class="hidden absolute right-4 top-4 flex h-14 w-14 items-center justify-center rounded-xl border border-slate-200 bg-white/90 shadow-sm">
+        <img id="report_type_logo" class="h-12 w-12 object-contain" alt="">
+    </div>
+    <div class="absolute bottom-4 right-4 text-xs text-slate-400">v{{ app_version }}</div>
+</section>

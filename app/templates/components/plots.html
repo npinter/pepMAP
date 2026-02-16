@@ -1,0 +1,32 @@
+<section class="mt-8 space-y-6">
+    <div id="peptides_plot" class="hidden relative mx-auto w-[90vw] max-w-[90vw] rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+        <div class="absolute right-6 top-6 z-10 flex items-center gap-2">
+            <button type="button" id="show_all_stats_button" class="inline-flex h-8 w-8 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-600 shadow-sm transition hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-slate-400 focus-visible:ring-offset-2" aria-label="Pin all bars" title="Pin all bars">
+                <i class="fa-solid fa-thumbtack"></i>
+            </button>
+            <button type="button" id="clear_stats_button" class="inline-flex h-8 w-8 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-600 shadow-sm transition hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-slate-400 focus-visible:ring-offset-2" aria-label="Clear pinned bars" title="Clear pinned bars">
+                <i class="fa-regular fa-trash-can"></i>
+            </button>
+        </div>
+        <div id="peptides_plot_content" class="relative z-0"></div>
+    </div>
+    <div id="features_plot" class="hidden mx-auto w-[90vw] max-w-[90vw] rounded-2xl border border-slate-200 bg-white p-6 shadow-sm"></div>
+    <div id="stats_container" class="hidden mx-auto w-full max-w-4xl rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+        <div class="flex flex-wrap items-center justify-between gap-3">
+            <div class="flex items-center gap-2">
+                <label for="summary_mode" class="text-sm font-semibold text-slate-700">Table</label>
+                <select id="summary_mode" class="h-9 rounded-md border border-slate-300 bg-white px-3 text-sm text-slate-700 focus:border-slate-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 focus-visible:ring-offset-2">
+                    <option value="per_sample" selected>Peptides per sample</option>
+                    <option value="per_topology">Peptides per topology per sample</option>
+                    <option value="per_domain">Peptides per domain per sample</option>
+                </select>
+            </div>
+            <button type="button" id="copy_table_button" class="hidden inline-flex h-8 w-8 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-600 shadow-sm transition hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-slate-400 focus-visible:ring-offset-2" aria-label="Copy table">
+                <i class="fa-regular fa-copy"></i>
+            </button>
+        </div>
+    </div>
+    <div class="mx-auto w-full max-w-4xl">
+        <div id="peptides_table"></div>
+    </div>
+</section>
