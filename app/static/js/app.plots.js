@@ -278,12 +278,14 @@ function updateFeatureVisibility() {
 function activateTab(tabGroup, button, shouldResize = true) {
     const buttons = tabGroup.querySelectorAll('[data-tab-target]');
     buttons.forEach(btn => {
-        btn.classList.remove('bg-slate-300', 'text-slate-900');
-        btn.classList.add('bg-white', 'text-slate-700');
+        btn.classList.remove('bg-slate-300', 'text-slate-900', 'text-slate-700', 'text-red-600');
+        btn.classList.add('bg-white');
+        btn.classList.add(btn.dataset.tabTone === 'danger' ? 'text-red-600' : 'text-slate-700');
         btn.removeAttribute('data-active');
     });
-    button.classList.remove('bg-white', 'text-slate-700');
-    button.classList.add('bg-slate-300', 'text-slate-900');
+    button.classList.remove('bg-white', 'text-slate-700', 'text-slate-900', 'text-red-600');
+    button.classList.add('bg-slate-300');
+    button.classList.add(button.dataset.tabTone === 'danger' ? 'text-red-600' : 'text-slate-900');
     button.setAttribute('data-active', 'true');
 
     const panels = tabGroup.querySelectorAll('.tab-panel');

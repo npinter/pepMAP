@@ -601,19 +601,22 @@ def render_tabs(tab_id, items):
     for idx, item in enumerate(items):
         label = html.escape(item['label'])
         active = idx == 0
+        tab_tone = item.get('tab_tone', 'default')
+        text_class = 'text-red-600' if tab_tone == 'danger' else ('text-slate-900' if active else 'text-slate-700')
         base_classes = (
             'tab-btn rounded-full border px-3 py-1 text-xs font-semibold transition '
             'border-slate-300'
         )
         if active:
-            classes = f'{base_classes} bg-slate-300 text-slate-900'
+            classes = f'{base_classes} bg-slate-300 {text_class}'
             active_attr = ' data-active="true"'
         else:
-            classes = f'{base_classes} bg-white text-slate-700 hover:border-slate-400'
+            classes = f'{base_classes} bg-white {text_class} hover:border-slate-400'
             active_attr = ''
+        tone_attr = f' data-tab-tone="{html.escape(tab_tone)}"' if tab_tone != 'default' else ''
         parts.append(
             f'<button type="button" class="{classes}" data-tab-target="{tab_id}-panel-{idx}" '
-            f'data-index="{idx}"{active_attr}>{label}</button>'
+            f'data-index="{idx}"{tone_attr}{active_attr}>{label}</button>'
         )
     parts.append('</div>')
     parts.append('<div class="tab-panels mt-3">')

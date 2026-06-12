@@ -657,6 +657,7 @@ def plot_peptides_route():
                 return jsonify({'error': 'No protein found for the given search input.'}), 400
             tab_items.append({
                 'label': fallback_label,
+                'tab_tone': 'danger',
                 'content': f'<div class="text-red-600">No protein found for {fallback_label}.</div>'
             })
             table_labels.append(fallback_label)
@@ -669,6 +670,7 @@ def plot_peptides_route():
                 return jsonify({'error': str(error)}), 400
             tab_items.append({
                 'label': fallback_label,
+                'tab_tone': 'danger',
                 'content': f'<div class="text-red-600">{str(error)}</div>'
             })
             continue
@@ -680,6 +682,7 @@ def plot_peptides_route():
                 return jsonify({'error': message}), 400
             tab_items.append({
                 'label': fallback_label,
+                'tab_tone': 'danger',
                 'content': f'<div class="text-red-600">{message}</div>'
             })
             continue
@@ -690,6 +693,7 @@ def plot_peptides_route():
                 return jsonify({'error': str(result) if result else 'Failed to build plot.'}), 400
             tab_items.append({
                 'label': fallback_label,
+                'tab_tone': 'danger',
                 'content': f'<div class="text-red-600">{str(result) if result else "Failed to build plot."}</div>'
             })
             continue
