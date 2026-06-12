@@ -25,6 +25,71 @@ function getPersistentHoverLayer(plotDiv) {
     return persistentHoverLayer;
 }
 
+function getSvgElementRect(element) {
+    if (!element || typeof element.getBoundingClientRect !== 'function') {
+        return null;
+    }
+    const rect = element.getBoundingClientRect();
+    if (!rect || rect.width === 0 || rect.height === 0) {
+        return null;
+    }
+    return rect;
+}
+
+function rectsOverlap(first, second) {
+    return (
+        first.left < second.right
+        && first.right > second.left
+        && first.top < second.bottom
+        && first.bottom > second.top
+    );
+}
+
+function hoverBoxOverlapsBar(plotDiv, hoverBox) {
+    const hoverRect = getSvgElementRect(hoverBox);
+    if (!hoverRect) {
+        return false;
+    }
+    const barElements = plotDiv.querySelectorAll('.barlayer .point path, .barlayer path');
+    return Array.from(barElements).some(barElement => {
+        const barRect = getSvgElementRect(barElement);
+        return barRect && rectsOverlap(hoverRect, barRect);
+    });
+}
+
+function setPinnedHoverBoxSolid(hoverBox) {
+    hoverBox.dataset.pinState = 'solid';
+    hoverBox.style.opacity = '1';
+}
+
+function configurePinnedHoverBox(plotDiv, hoverBox) {
+    hoverBox.style.pointerEvents = 'all';
+    hoverBox.style.cursor = 'pointer';
+
+    if (hoverBoxOverlapsBar(plotDiv, hoverBox)) {
+        hoverBox.dataset.pinState = 'translucent';
+        hoverBox.style.opacity = '0.5';
+    } else {
+        setPinnedHoverBoxSolid(hoverBox);
+    }
+
+    hoverBox.addEventListener('click', function(event) {
+        event.stopPropagation();
+        if (this.dataset.pinState === 'translucent') {
+            setPinnedHoverBoxSolid(this);
+            return;
+        }
+        this.remove();
+    });
+}
+
+function appendPinnedHoverBox(plotDiv, persistentHoverLayer, hoverBox, hoverBoxId) {
+    const persistentHoverBox = hoverBox.cloneNode(true);
+    persistentHoverBox.setAttribute('id', hoverBoxId);
+    persistentHoverLayer.appendChild(persistentHoverBox);
+    configurePinnedHoverBox(plotDiv, persistentHoverBox);
+}
+
 function pinHoverBox(plotDiv, persistentHoverLayer, eventData) {
     if (window.Plotly && eventData) {
         if (eventData.points) {
@@ -45,17 +110,7 @@ function pinHoverBox(plotDiv, persistentHoverLayer, eventData) {
                 if (existingHoverBox) {
                     existingHoverBox.remove();
                 } else {
-                    const persistentHoverBox = hoverBox.cloneNode(true);
-                    persistentHoverBox.style.pointerEvents = 'all';
-                    const hoverBoxId = `hover-${Date.now()}`;
-                    persistentHoverBox.setAttribute('id', hoverBoxId);
-
-                    persistentHoverBox.addEventListener('click', function(event) {
-                        event.stopPropagation();
-                        this.remove();
-                    });
-
-                    persistentHoverLayer.appendChild(persistentHoverBox);
+                    appendPinnedHoverBox(plotDiv, persistentHoverLayer, hoverBox, `hover-${Date.now()}`);
                 }
             }
         }
@@ -149,15 +204,8 @@ function cloneHoverBoxesToPersistent(plotDiv, persistentHoverLayer) {
             child.textContent === hoverBox.textContent
         );
         if (!existingHoverBox) {
-            const persistentHoverBox = hoverBox.cloneNode(true);
-            persistentHoverBox.style.pointerEvents = 'all';
             const hoverBoxId = `hover-${Date.now()}-${Math.floor(Math.random() * 10000)}`;
-            persistentHoverBox.setAttribute('id', hoverBoxId);
-            persistentHoverBox.addEventListener('click', function(event) {
-                event.stopPropagation();
-                this.remove();
-            });
-            persistentHoverLayer.appendChild(persistentHoverBox);
+            appendPinnedHoverBox(plotDiv, persistentHoverLayer, hoverBox, hoverBoxId);
         }
     });
 }
