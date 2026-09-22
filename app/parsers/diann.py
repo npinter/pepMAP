@@ -12,6 +12,10 @@ REQUIRED_COLUMNS = [
     'Proteotypic'
 ]
 
+OPTIONAL_COLUMNS = [
+    'PG.Q.Value'
+]
+
 
 def parse_diann(tsv_stream, filename=None):
     report_df = read_report_table(tsv_stream, filename, delimiter='\t')
@@ -24,7 +28,7 @@ def parse_diann(tsv_stream, filename=None):
         'Precursor.Charge': 'Charge',
         ep_source: ep_column
     })
-    report_df = report_df[[
+    output_columns = [
         'Run',
         'Protein.Ids',
         'Intensity',
@@ -32,6 +36,10 @@ def parse_diann(tsv_stream, filename=None):
         'Charge',
         'Proteotypic',
         ep_column
-    ]]
+    ]
+    output_columns.extend(
+        column for column in OPTIONAL_COLUMNS if column in report_df.columns
+    )
+    report_df = report_df[output_columns]
     report_df = report_df[report_df['Intensity'] != 0]
     return report_df, 'DIA-NN.png'

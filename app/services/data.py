@@ -295,9 +295,13 @@ def find_peptide_positions(
     peptide_data = []
     positions_cache = {}
     columns = ['Run', 'Sequence', 'Intensity', 'Charge', p_value_column, 'Proteotypic']
-    for run, peptide_sequence, intensity, charge, p_value, proteotypic in (
-        protein_report_df[columns].itertuples(index=False, name=None)
-    ):
+    optional_columns = [
+        column for column in ('PG.Q.Value',) if column in protein_report_df.columns
+    ]
+    columns.extend(optional_columns)
+    for row_values in protein_report_df[columns].itertuples(index=False, name=None):
+        run, peptide_sequence, intensity, charge, p_value, proteotypic = row_values[:6]
+        optional_values = dict(zip(optional_columns, row_values[6:]))
         start_positions = positions_cache.get(peptide_sequence)
         if start_positions is None:
             start_positions = []
@@ -310,7 +314,7 @@ def find_peptide_positions(
             continue
         peptide_length = len(peptide_sequence)
         for start_position in start_positions:
-            peptide_data.append({
+            peptide = {
                 'Run': run,
                 'Peptide': peptide_sequence,
                 'Start': start_position + 1,
@@ -319,7 +323,9 @@ def find_peptide_positions(
                 'Charge': charge,
                 p_value_column: p_value,
                 'Proteotypic': proteotypic
-            })
+            }
+            peptide.update(optional_values)
+            peptide_data.append(peptide)
 
     result = pd.DataFrame(peptide_data)
     return result

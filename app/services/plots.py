@@ -2,6 +2,7 @@ import html
 from functools import lru_cache
 from collections import OrderedDict
 import numpy as np
+import pandas as pd
 import plotly.graph_objs as go
 import plotly.io as pio
 import requests
@@ -227,6 +228,19 @@ def plot_peptides(
 
         for _, row in group.iterrows():
             color = f"rgba(255,{255 - row['normalized_intensity'] * 255},0,0.8)"
+            hover_lines = [
+                f"<b>{row['Peptide']}</b>",
+                f"<br>Position: {row['Start']}-{row['End']}",
+                f"<br>Log2 Intensity: {row['log2_intensity']:.2f}",
+                f"<br>Charge: {row['Charge']}",
+                f"<br>{p_value_name}: {row[p_value_column]}"
+            ]
+            pg_q_value = row.get('PG.Q.Value')
+            if pd.notna(pg_q_value):
+                hover_lines.append(f"<br>PG.Q.Value: {pg_q_value}")
+            hover_lines.append(
+                f"<br>Proteotypic: {'Yes' if row['Proteotypic'] else 'No'}"
+            )
             trace = go.Bar(
                 x=[row['End'] - row['Start']],
                 y=[row['y_base'] + row['overlap_offset']],
@@ -238,14 +252,7 @@ def plot_peptides(
                     line=dict(color='black', width=peptide_bar_line_width)
                 ),
                 hoverinfo='text',
-                hovertext=(
-                    f"<b>{row['Peptide']}</b>"
-                    f"<br>Position: {row['Start']}-{row['End']}"
-                    f"<br>Log2 Intensity: {row['log2_intensity']:.2f}"
-                    f"<br>Charge: {row['Charge']}"
-                    f"<br>{p_value_name}: {row[p_value_column]}"
-                    f"<br>Proteotypic: {'Yes' if row['Proteotypic'] else 'No'}"
-                ),
+                hovertext=''.join(hover_lines),
                 showlegend=False
             )
             traces.append(trace)

@@ -5,7 +5,7 @@ from flask import Flask
 from .routes import bp
 from .services.storage import clear_store_dir, init_store, start_scheduler
 
-APP_VERSION = '1.0.1'
+APP_VERSION = '1.0.2'
 
 
 def create_app(config_object='config.Config'):
